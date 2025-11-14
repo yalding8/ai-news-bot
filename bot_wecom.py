@@ -2,6 +2,7 @@
 """
 AI新闻 企业微信群机器人版本
 使用Webhook方式发送消息到企业微信群
+集成真实新闻API，避免AI编造内容
 """
 
 import os
@@ -10,6 +11,7 @@ import logging
 from datetime import datetime
 from dotenv import load_dotenv
 from openai import OpenAI
+from news_fetcher import get_real_news, NewsFetcher
 
 # 加载环境变量
 load_dotenv()
@@ -95,7 +97,7 @@ def send_wecom_message(content: str, msgtype: str = "text") -> bool:
 
 def get_news(topic_key: str) -> str:
     """
-    获取指定主题的新闻
+    获取指定主题的新闻（集成真实新闻API）
 
     Args:
         topic_key: 新闻主题关键词
@@ -112,45 +114,77 @@ def get_news(topic_key: str) -> str:
     try:
         today_date = datetime.now().strftime("%Y年%m月%d日")
 
-        # 不同主题的提示词
-        prompts = {
-            'ai': f"请总结{today_date}全球AI领域的重要新闻和动态。包括：技术突破🚀、产品发布📦、投资并购💰、政策法规📜",
-            'finance': f"请总结{today_date}全球财经领域的重要新闻。包括：市场动态📊、经济政策🏛️、企业财报💼、投资动向💰",
-            'startup': f"请总结{today_date}创业投资领域的重要新闻。包括：融资动态💰、新兴公司🚀、投资趋势📈、行业分析🔍",
-            'education': f"请总结{today_date}国际教育行业的重要新闻和动态。包括：留学政策🌍、教育科技💻、院校动态🏫、行业趋势📈、教育投资💰",
-            'pbsa': f"请总结{today_date}PBSA(学生公寓)行业的重要新闻和动态。包括：市场动态🏠、投资并购💰、政策法规📜、项目开发🏗️、行业趋势📈",
-            'uhomes': f"请总结{today_date}异乡好居(Uhomes)公司的重要新闻和动态。包括：企业动态🏡、业务发展📈、投资融资💰、合作伙伴🤝、市场扩展🌍"
-        }
+        # 第一步：获取真实新闻
+        logger.info(f"  └─ 从新闻API获取真实新闻...")
+        real_news = get_real_news(topic_key, num=5)
 
+        if not real_news:
+            # 如果没有获取到真实新闻，返回说明
+            logger.warning(f"  └─ 未获取到真实新闻，使用备用方案")
+            return f"""{topic_info['emoji']} {topic_info['name']} - {today_date}
+
+⚠️ 暂时无法获取实时新闻
+
+可能原因：
+• 新闻API配额已用完
+• 网络连接问题
+• 今日该主题暂无新闻
+
+💡 建议：
+• 稍后重试
+• 访问权威新闻网站查看
+• 配置新闻API Key (TIANAPI_KEY 或 NEWSAPI_KEY)"""
+
+        # 第二步：格式化真实新闻为文本
+        fetcher = NewsFetcher()
+        news_text = fetcher.format_news_for_ai(real_news)
+        logger.info(f"  └─ 获取到 {len(real_news)} 条真实新闻")
+
+        # 第三步：让AI总结这些真实新闻
+        logger.info(f"  └─ AI正在总结新闻...")
         response = client.chat.completions.create(
             model="deepseek-chat",
             messages=[{
                 "role": "user",
-                "content": f"""{prompts[topic_key]}
+                "content": f"""请总结以下{topic_info['name']}的真实新闻：
 
-要求：
-1. 按重要性排序，每条新闻2-3句话概括
-2. 使用简洁的文本格式，适合企业微信展示
-3. 如果今天新闻较少，可包含近期重要动态
-4. 突出重点，用emoji增强可读性
-5. 标注信息来源
+{news_text}
 
-请开始总结。"""
+⚠️ 重要要求：
+1. 只总结上述提供的真实新闻，不要添加其他内容
+2. 每条新闻用2-3句话概括关键信息
+3. 保持新闻来源信息
+4. 使用简洁的文本格式，适合企业微信展示
+5. 用emoji增强可读性
+
+请开始总结："""
             }],
             max_tokens=2000,
-            temperature=0.7
+            temperature=0.3  # 降低温度，减少创造性
         )
 
-        news_content = response.choices[0].message.content
+        ai_summary = response.choices[0].message.content
+        logger.info(f"✅ {topic_info['name']} 获取成功")
 
-        # 格式化消息
+        # 第四步：格式化最终消息（包含新闻链接）
+        news_links = "\n".join([
+            f"• {news['title']}\n  {news['url']}"
+            for news in real_news[:3]  # 只显示前3条链接
+        ])
+
         formatted_message = f"""{topic_info['emoji']} {topic_info['name']} - {today_date}
-由DeepSeek AI智能总结
+📰 真实新闻 + AI智能总结
 
-{news_content}
+{ai_summary}
 
 ━━━━━━━━━━━━━━━━
-💡 发送命令获取其他主题新闻"""
+🔗 新闻原文链接：
+
+{news_links}
+
+━━━━━━━━━━━━━━━━
+✅ 本次推送基于真实新闻API
+💡 点击链接查看详情"""
 
         return formatted_message
 
