@@ -1,0 +1,11 @@
+services:
+  - type: worker
+    name: ai-news-bot-wecom
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: python3 scheduler.py --check
+    envVars:
+      - key: DEEPSEEK_API_KEY
+        sync: false
+      - key: WECOM_WEBHOOK_URL
+        sync: false

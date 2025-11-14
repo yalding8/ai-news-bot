@@ -1,0 +1,55 @@
+# ⏰ 定时邮件推送配置
+# 每天上午9点自动发送所有6个主题的新闻到邮箱
+
+# ========== 配置步骤 ==========
+
+# 1. 打开crontab编辑器
+crontab -e
+
+# 2. 在打开的编辑器中添加以下内容（复制下面这一行）：
+0 9 * * * cd /Users/ningding/ai-news-bot && /Users/ningding/.pyenv/shims/python3 bot_email.py >> email_cron.log 2>&1
+
+# 3. 保存并退出
+# - 如果是vim编辑器：按 Esc，输入 :wq，回车
+# - 如果是nano编辑器：按 Ctrl+X，按 Y，回车
+
+# 4. 验证crontab已保存
+crontab -l
+
+# ========== 说明 ==========
+
+# 时间格式：0 9 * * *
+# - 0 = 第0分钟
+# - 9 = 上午9点
+# - * * * = 每天、每月、每周都执行
+
+# 日志文件：email_cron.log
+# - 所有输出会保存到这个文件
+# - 查看日志：tail -f email_cron.log
+
+# ========== 测试 ==========
+
+# 手动测试（不等到9点）：
+cd /Users/ningding/ai-news-bot && /Users/ningding/.pyenv/shims/python3 bot_email.py
+
+# 查看cron执行日志：
+tail -50 email_cron.log
+
+# 查看系统cron日志（如果任务没执行）：
+log show --predicate 'process == "cron"' --last 1h
+
+# ========== 修改推送时间 ==========
+
+# 如果想改其他时间，修改前两个数字：
+# 早上8点：  0 8 * * *
+# 中午12点： 0 12 * * *
+# 晚上6点：  0 18 * * *
+# 早上8:30： 30 8 * * *
+
+# ========== 停止定时推送 ==========
+
+# 打开crontab编辑器
+crontab -e
+
+# 删除或注释掉（在行首加#）那一行，然后保存退出
+# 0 9 * * * cd /Users/ningding/ai-news-bot && /Users/ningding/.pyenv/shims/python3 bot_email.py >> email_cron.log 2>&1

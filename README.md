@@ -1,13 +1,16 @@
-# 📰 多主题新闻 Telegram Bot
+# 📰 多主题新闻机器人
 
 支持多个领域的最新资讯推送，由DeepSeek AI智能总结。
+
+🤖 **支持平台**：Telegram Bot | 企业微信群机器人 | 邮件推送
 
 ## ✨ 功能特点
 
 - 🤖 **DeepSeek驱动**：使用DeepSeek AI智能搜索和总结
 - 📰 **多主题支持**：AI科技、财经新闻、创业投资、国际教育、学生公寓、异乡好居
 - 💬 **交互式命令**：支持按主题获取新闻
-- 📱 **Telegram原生**：完美适配Telegram的Markdown格式
+- ⏰ **定时推送**：支持自动定时推送，早中晚随心配置
+- 📱 **多平台支持**：Telegram Bot + 企业微信群机器人
 - 💰 **成本低廉**：比Claude便宜20倍
 
 ## 🚀 快速开始
@@ -43,9 +46,46 @@ cp .env.example .env
 
 ### 3. 启动Bot
 
+**Telegram版本：**
 ```bash
 python bot_deepseek.py
 ```
+
+**企业微信版本：**
+```bash
+python bot_wecom.py
+```
+
+**邮件推送版本：**
+```bash
+python bot_email.py
+```
+
+**详细接入指南：**
+- [企业微信群机器人接入指南](WECOM_GUIDE.md)
+- [📧 邮件推送配置指南](EMAIL_GUIDE.md)
+- [⚡ Telegram快速开始](TELEGRAM_QUICKSTART.md)
+
+### 4. 配置定时推送（可选）
+
+**⏰ 实现自动定时推送新闻**
+
+```bash
+# 查看已配置的定时任务
+python3 scheduler.py --list
+
+# 测试立即推送
+python3 scheduler.py --now --name "早间AI新闻"
+
+# 配置 crontab（macOS/Linux）
+crontab -e
+# 添加：每天早上9点推送
+0 9 * * * cd /path/to/ai-news-bot && python3 scheduler.py --check >> scheduler.log 2>&1
+```
+
+**📚 详细配置指南：**
+- [⚡ 5分钟快速开始](QUICKSTART_SCHEDULE.md) - 推荐新手
+- [📖 完整配置指南](SCHEDULE_GUIDE.md) - 详细文档
 
 ## 📱 使用命令
 
