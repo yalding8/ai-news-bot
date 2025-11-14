@@ -8,6 +8,10 @@ import requests
 import logging
 from datetime import datetime
 from typing import List, Dict, Optional
+from dotenv import load_dotenv
+
+# 加载环境变量
+load_dotenv()
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +29,7 @@ class NewsFetcher:
 
     def fetch_tianapi_news(self, topic: str, num: int = 5) -> List[Dict]:
         """
-        从天行数据获取新闻
+        从天行数据获取新闻（支持AI资讯接口）
 
         Args:
             topic: 新闻主题关键词
@@ -39,28 +43,32 @@ class NewsFetcher:
             return []
 
         try:
-            # 天行数据的通用新闻接口
-            url = f"{self.tianapi_base}/generalnews/index"
+            # 天行数据的AI资讯接口
+            # 使用HTTPS域名
+            url = "https://apis.tianapi.com/ai/index"
             params = {
                 'key': self.tianapi_key,
-                'num': num,
-                'word': topic  # 关键词搜索
+                'num': num
             }
 
-            response = requests.get(url, params=params, timeout=10)
+            response = requests.post(url, data=params, timeout=10)
             data = response.json()
 
             if data.get('code') == 200:
                 news_list = []
-                for item in data.get('newslist', []):
+                result = data.get('result', {})
+                newslist = result.get('newslist', [])
+
+                for item in newslist:
                     news_list.append({
-                        'title': item.get('title'),
+                        'title': item.get('title', ''),
                         'description': item.get('description', ''),
-                        'source': item.get('source', '天行数据'),
+                        'source': item.get('source', 'IT之家'),
                         'url': item.get('url', ''),
-                        'time': item.get('ctime', '')
+                        'time': item.get('ctime', ''),
+                        'picUrl': item.get('picUrl', '')
                     })
-                logger.info(f"✅ 天行数据获取{len(news_list)}条新闻")
+                logger.info(f"✅ 天行数据获取{len(news_list)}条AI新闻")
                 return news_list
             else:
                 logger.error(f"❌ 天行数据API错误: {data.get('msg')}")
