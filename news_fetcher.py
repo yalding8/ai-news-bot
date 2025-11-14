@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """
 新闻API集成模块
-支持多个新闻源，获取真实新闻数据
+支持多个新闻源，获取真实新闻数据（API + RSS）
 """
 import os
 import requests
+import feedparser
 import logging
 from datetime import datetime
 from typing import List, Dict, Optional
@@ -26,6 +27,32 @@ class NewsFetcher:
         # NewsAPI配置
         self.newsapi_key = os.getenv('NEWSAPI_KEY')
         self.newsapi_base = "https://newsapi.org/v2"
+
+        # RSS订阅源配置（免费、高质量）
+        self.rss_feeds = {
+            'ai': [
+                'https://www.36kr.com/feed',
+                'https://sspai.com/feed',
+                'https://www.ithome.com/rss/',
+            ],
+            'finance': [
+                'https://www.36kr.com/feed',
+                'https://www.huxiu.com/rss/0.xml',
+            ],
+            'startup': [
+                'https://www.36kr.com/feed',
+                'https://www.huxiu.com/rss/0.xml',
+            ],
+            'education': [
+                'https://www.36kr.com/feed',
+            ],
+            'pbsa': [
+                'https://www.36kr.com/feed',
+            ],
+            'uhomes': [
+                'https://www.36kr.com/feed',
+            ]
+        }
 
     def fetch_tianapi_news(self, topic: str, num: int = 5) -> List[Dict]:
         """
@@ -127,9 +154,50 @@ class NewsFetcher:
             logger.error(f"❌ NewsAPI请求失败: {e}")
             return []
 
+    def fetch_rss_news(self, topic_key: str, num: int = 5) -> List[Dict]:
+        """
+        从RSS订阅源获取新闻
+
+        Args:
+            topic_key: 主题关键字
+            num: 获取数量
+
+        Returns:
+            新闻列表
+        """
+        feeds = self.rss_feeds.get(topic_key, [])
+        if not feeds:
+            logger.info(f"未配置{topic_key}的RSS源")
+            return []
+
+        all_news = []
+        for feed_url in feeds:
+            try:
+                logger.info(f"  └─ 从RSS获取: {feed_url[:50]}...")
+                feed = feedparser.parse(feed_url)
+
+                for entry in feed.entries[:num]:
+                    # 提取新闻信息
+                    news_item = {
+                        'title': entry.get('title', ''),
+                        'description': entry.get('summary', entry.get('description', ''))[:200],
+                        'source': feed.feed.get('title', 'RSS'),
+                        'url': entry.get('link', ''),
+                        'time': entry.get('published', entry.get('updated', ''))
+                    }
+                    all_news.append(news_item)
+
+                logger.info(f"✅ RSS获取{len(feed.entries[:num])}条新闻")
+
+            except Exception as e:
+                logger.error(f"❌ RSS解析失败 {feed_url}: {e}")
+                continue
+
+        return all_news[:num]
+
     def fetch_news(self, topic: str, keywords: List[str], num: int = 5) -> List[Dict]:
         """
-        获取新闻（自动尝试多个源）
+        获取新闻（自动尝试多个源：API + RSS）
 
         Args:
             topic: 主题名称（用于日志）
@@ -141,16 +209,25 @@ class NewsFetcher:
         """
         all_news = []
 
-        # 尝试每个关键词
+        # 第一优先级：天行数据API（已配置的AI资讯接口）
         for keyword in keywords:
-            # 优先使用天行数据（中文新闻更好）
             tianapi_news = self.fetch_tianapi_news(keyword, num)
             all_news.extend(tianapi_news)
+            if tianapi_news:
+                break  # 如果获取到了就不继续尝试其他关键词
 
-            # 如果天行数据没数据，尝试NewsAPI
-            if not tianapi_news:
+        # 第二优先级：RSS订阅源（免费、高质量）
+        if not all_news:
+            rss_news = self.fetch_rss_news(topic, num)
+            all_news.extend(rss_news)
+
+        # 第三优先级：NewsAPI（需要配置）
+        if not all_news:
+            for keyword in keywords:
                 newsapi_news = self.fetch_newsapi_news(keyword, num)
                 all_news.extend(newsapi_news)
+                if newsapi_news:
+                    break
 
         # 去重（按标题）
         seen_titles = set()
