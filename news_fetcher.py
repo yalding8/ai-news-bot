@@ -24,42 +24,60 @@ class NewsFetcher:
         self.tianapi_key = os.getenv('TIANAPI_KEY')
         self.tianapi_base = "http://api.tianapi.com"
 
+        # 天行数据API接口映射（不同主题对应不同的接口）
+        self.tianapi_endpoints = {
+            'ai': '/ai/index',           # AI资讯专用接口
+            'finance': '/caijing/index',  # 财经新闻专用接口
+            'startup': '/guonei/index',   # 创业新闻使用国内新闻+关键词
+            'education': '/guonei/index', # 教育新闻使用国内新闻+关键词
+            'pbsa': '/guonei/index',      # PBSA新闻使用国内新闻+关键词
+            'uhomes': '/guonei/index'     # Uhomes新闻使用国内新闻+关键词
+        }
+
         # NewsAPI配置
         self.newsapi_key = os.getenv('NEWSAPI_KEY')
         self.newsapi_base = "https://newsapi.org/v2"
 
         # RSS订阅源配置（免费、高质量）
+        # 为每个主题配置了更精准的RSS源，提高新闻相关性
         self.rss_feeds = {
             'ai': [
-                'https://www.36kr.com/feed',
-                'https://sspai.com/feed',
-                'https://www.ithome.com/rss/',
+                'https://www.36kr.com/feed',              # 36氪科技新闻
+                'https://sspai.com/feed',                 # 少数派（数字生活方式）
+                'https://www.ithome.com/rss/',            # IT之家
             ],
             'finance': [
-                'https://www.36kr.com/feed',
-                'https://www.huxiu.com/rss/0.xml',
+                'https://www.huxiu.com/rss/0.xml',        # 虎嗅财经
+                'https://www.36kr.com/feed',              # 36氪（包含财经内容）
+                'http://dedicated.wallstreetcn.com/rss.xml', # 华尔街见闻（如果可用）
             ],
             'startup': [
-                'https://www.36kr.com/feed',
-                'https://www.huxiu.com/rss/0.xml',
+                'http://www.cyzone.cn/rss/',              # 创业邦（创投垂直媒体）
+                'https://www.huxiu.com/rss/0.xml',        # 虎嗅创投
+                'https://www.36kr.com/feed',              # 36氪创投
             ],
             'education': [
-                'https://www.36kr.com/feed',
+                'https://www.jiemodui.com/rss.xml',       # 芥末堆（教育产业垂直媒体）
+                'https://www.heibandongcha.com/feed',     # 黑板洞察（教育产业数据研究）
+                'https://www.36kr.com/feed',              # 36氪教育频道
             ],
             'pbsa': [
-                'https://www.36kr.com/feed',
+                'https://www.36kr.com/feed',              # 36氪房地产科技
+                'https://www.huxiu.com/rss/0.xml',        # 虎嗅地产
             ],
             'uhomes': [
-                'https://www.36kr.com/feed',
+                'https://www.36kr.com/feed',              # 36氪（包含留学、房产相关）
+                'https://www.huxiu.com/rss/0.xml',        # 虎嗅
             ]
         }
 
-    def fetch_tianapi_news(self, topic: str, num: int = 5) -> List[Dict]:
+    def fetch_tianapi_news(self, topic: str, keyword: str = None, num: int = 5) -> List[Dict]:
         """
-        从天行数据获取新闻（支持AI资讯接口）
+        从天行数据获取新闻（支持多个主题接口）
 
         Args:
-            topic: 新闻主题关键词
+            topic: 新闻主题（ai/finance/startup/education/pbsa/uhomes）
+            keyword: 搜索关键词（用于国内新闻接口）
             num: 获取数量
 
         Returns:
@@ -69,14 +87,26 @@ class NewsFetcher:
             logger.warning("未配置TIANAPI_KEY，跳过天行数据")
             return []
 
+        # 获取该主题对应的API接口
+        endpoint = self.tianapi_endpoints.get(topic)
+        if not endpoint:
+            logger.warning(f"未配置主题'{topic}'的天行数据接口")
+            return []
+
         try:
-            # 天行数据的AI资讯接口
-            # 使用HTTPS域名
-            url = "https://apis.tianapi.com/ai/index"
+            # 使用HTTPS域名 + 对应主题的接口
+            url = f"https://apis.tianapi.com{endpoint}"
             params = {
                 'key': self.tianapi_key,
                 'num': num
             }
+
+            # 对于使用国内新闻接口的主题，添加关键词搜索
+            if endpoint == '/guonei/index' and keyword:
+                params['word'] = keyword
+                logger.info(f"  └─ 使用天行数据国内新闻接口，关键词: {keyword}")
+            else:
+                logger.info(f"  └─ 使用天行数据接口: {endpoint}")
 
             response = requests.post(url, data=params, timeout=10)
             data = response.json()
@@ -90,12 +120,12 @@ class NewsFetcher:
                     news_list.append({
                         'title': item.get('title', ''),
                         'description': item.get('description', ''),
-                        'source': item.get('source', 'IT之家'),
+                        'source': item.get('source', '天行数据'),
                         'url': item.get('url', ''),
                         'time': item.get('ctime', ''),
                         'picUrl': item.get('picUrl', '')
                     })
-                logger.info(f"✅ 天行数据获取{len(news_list)}条AI新闻")
+                logger.info(f"✅ 天行数据获取{len(news_list)}条{topic}新闻")
                 return news_list
             else:
                 logger.error(f"❌ 天行数据API错误: {data.get('msg')}")
@@ -154,6 +184,70 @@ class NewsFetcher:
             logger.error(f"❌ NewsAPI请求失败: {e}")
             return []
 
+    def calculate_news_quality(self, news: Dict, topic_keywords: List[str]) -> float:
+        """
+        计算新闻质量分数（用于筛选和排序）
+
+        评分标准：
+        - 标题长度适中（20-100字符）：+10分
+        - 有描述内容：+10分
+        - 标题包含主题关键词：每个关键词+5分
+        - 来源可信度：知名媒体+10分
+
+        Args:
+            news: 新闻字典
+            topic_keywords: 主题关键词列表
+
+        Returns:
+            质量分数（0-100）
+        """
+        score = 0.0
+
+        # 1. 标题质量（20分）
+        title = news.get('title', '')
+        title_len = len(title)
+        if 20 <= title_len <= 100:
+            score += 20
+        elif 10 <= title_len < 20 or 100 < title_len <= 150:
+            score += 10
+
+        # 2. 描述质量（15分）
+        description = news.get('description', '')
+        if len(description) > 50:
+            score += 15
+        elif len(description) > 20:
+            score += 8
+
+        # 3. 关键词相关度（30分）
+        title_lower = title.lower()
+        desc_lower = description.lower()
+        keyword_matches = 0
+        for keyword in topic_keywords:
+            keyword_lower = keyword.lower()
+            if keyword_lower in title_lower:
+                keyword_matches += 2
+            if keyword_lower in desc_lower:
+                keyword_matches += 1
+        score += min(keyword_matches * 5, 30)  # 最多30分
+
+        # 4. 来源可信度（20分）
+        trusted_sources = [
+            '36kr', '36氪', 'IT之家', '虎嗅', '少数派', 'sspai',
+            '新浪', '腾讯', '网易', '搜狐', '财新', '界面',
+            'reuters', 'bloomberg', 'techcrunch', 'wired'
+        ]
+        source = news.get('source', '').lower()
+        for trusted in trusted_sources:
+            if trusted in source:
+                score += 20
+                break
+
+        # 5. 有URL链接（15分）
+        if news.get('url', ''):
+            score += 15
+
+        return score
+
     def fetch_rss_news(self, topic_key: str, num: int = 5) -> List[Dict]:
         """
         从RSS订阅源获取新闻
@@ -195,36 +289,36 @@ class NewsFetcher:
 
         return all_news[:num]
 
-    def fetch_news(self, topic: str, keywords: List[str], num: int = 5) -> List[Dict]:
+    def fetch_news(self, topic: str, keywords: List[str], num: int = 10) -> List[Dict]:
         """
-        获取新闻（自动尝试多个源：API + RSS）
+        获取新闻（从所有源合并：API + RSS）
 
         Args:
-            topic: 主题名称（用于日志）
+            topic: 主题名称（ai/finance/startup等）
             keywords: 搜索关键词列表
-            num: 每个源获取的数量
+            num: 最终返回的数量（会从所有源获取更多，然后筛选）
 
         Returns:
-            新闻列表（合并去重）
+            新闻列表（合并去重后的高质量新闻）
         """
         all_news = []
 
-        # 第一优先级：天行数据API（已配置的AI资讯接口）
-        for keyword in keywords:
-            tianapi_news = self.fetch_tianapi_news(keyword, num)
+        # 从所有源获取新闻（不再使用优先级，而是合并所有源）
+
+        # 1. 天行数据API（根据主题调用不同的接口）
+        if self.tianapi_key and keywords:
+            # 使用第一个关键词作为搜索词（对于国内新闻接口）
+            tianapi_news = self.fetch_tianapi_news(topic, keyword=keywords[0], num=5)
             all_news.extend(tianapi_news)
-            if tianapi_news:
-                break  # 如果获取到了就不继续尝试其他关键词
 
-        # 第二优先级：RSS订阅源（免费、高质量）
-        if not all_news:
-            rss_news = self.fetch_rss_news(topic, num)
-            all_news.extend(rss_news)
+        # 2. RSS订阅源（总是调用，不管前面是否成功）
+        rss_news = self.fetch_rss_news(topic, num=5)
+        all_news.extend(rss_news)
 
-        # 第三优先级：NewsAPI（需要配置）
-        if not all_news:
+        # 3. NewsAPI（总是调用，补充更多新闻）
+        if self.newsapi_key:  # 只有配置了才调用
             for keyword in keywords:
-                newsapi_news = self.fetch_newsapi_news(keyword, num)
+                newsapi_news = self.fetch_newsapi_news(keyword, num=3)
                 all_news.extend(newsapi_news)
                 if newsapi_news:
                     break
@@ -237,8 +331,23 @@ class NewsFetcher:
                 seen_titles.add(news['title'])
                 unique_news.append(news)
 
-        logger.info(f"📰 {topic}: 获取{len(unique_news)}条真实新闻")
-        return unique_news[:num]  # 返回前N条
+        # 质量评分和排序
+        for news in unique_news:
+            news['quality_score'] = self.calculate_news_quality(news, keywords)
+
+        # 按质量分数降序排序
+        unique_news.sort(key=lambda x: x.get('quality_score', 0), reverse=True)
+
+        logger.info(f"📰 {topic}: 从所有源获取{len(unique_news)}条真实新闻，已按质量排序")
+
+        # 返回高质量新闻（只返回评分>30的新闻）
+        quality_news = [n for n in unique_news if n.get('quality_score', 0) > 30]
+
+        if not quality_news:
+            # 如果没有高质量新闻，至少返回评分最高的几条
+            return unique_news[:num]
+
+        return quality_news[:num]  # 返回前N条高质量新闻（默认10条）
 
     def format_news_for_ai(self, news_list: List[Dict]) -> str:
         """

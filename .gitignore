@@ -1,28 +1,45 @@
+# 环境变量和配置文件
+.env
+.env.local
+.env.backup
+*.env
+
+# 日志文件
+*.log
+logs/
+
 # Python
 __pycache__/
 *.py[cod]
-*$py.class
-*.so
+*.pyo
+*.pyd
 .Python
-env/
 venv/
-ENV/
-build/
-dist/
-*.egg-info/
-
-# 环境变量
-.env
+env/
+.venv/
 
 # IDE
 .vscode/
 .idea/
 *.swp
 *.swo
+*~
 
-# 日志
-*.log
-
-# OS
+# 系统文件
 .DS_Store
 Thumbs.db
+
+# 临时文件
+*.tmp
+*.temp
+*.bak
+*.backup
+
+# 部署相关
+run_news_bot.sh
+health_check.sh
+deploy.sh
+
+# 测试文件
+test_*.py
+*_test.py

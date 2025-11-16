@@ -114,9 +114,9 @@ def get_news(topic_key: str) -> str:
     try:
         today_date = datetime.now().strftime("%Y年%m月%d日")
 
-        # 第一步：获取真实新闻
-        logger.info(f"  └─ 从新闻API获取真实新闻...")
-        real_news = get_real_news(topic_key, num=5)
+        # 第一步：获取真实新闻（获取更多新闻，让AI筛选精华）
+        logger.info(f"  └─ 从所有新闻源获取真实新闻（API + RSS）...")
+        real_news = get_real_news(topic_key, num=10)  # 获取10条，已按质量排序
 
         if not real_news:
             # 如果没有获取到真实新闻，返回说明
@@ -146,18 +146,20 @@ def get_news(topic_key: str) -> str:
             model="deepseek-chat",
             messages=[{
                 "role": "user",
-                "content": f"""请总结以下{topic_info['name']}的真实新闻：
+                "content": f"""请总结以下{topic_info['name']}的真实新闻（共{len(real_news)}条）：
 
 {news_text}
 
 ⚠️ 重要要求：
 1. 只总结上述提供的真实新闻，不要添加其他内容
-2. 每条新闻用2-3句话概括关键信息
-3. 保持新闻来源信息
-4. 使用简洁的文本格式，适合企业微信展示
-5. 用emoji增强可读性
+2. 如果新闻超过5条，请挑选3-5条最重要、最有价值的新闻进行重点总结
+3. 每条新闻用2-3句话概括关键信息和亮点
+4. 保持新闻来源信息（在括号中注明）
+5. 使用简洁的文本格式，适合企业微信展示
+6. 用emoji增强可读性（每条新闻前加相关emoji）
+7. 按重要性排序，最重要的新闻放在最前面
 
-请开始总结："""
+请开始总结（重点提炼）："""
             }],
             max_tokens=2000,
             temperature=0.3  # 降低温度，减少创造性
@@ -236,14 +238,18 @@ def main():
 
     logger.info("=" * 50)
 
-    # 示例：发送AI新闻
-    logger.info("📡 示例：发送AI新闻到企业微信群...")
-    news = get_news('ai')
-    send_wecom_message(news)
+    # 只发送AI科技和国际教育两个主题的新闻
+    # 已取消：财经、创业、PBSA、Uhomes
+    active_topics = ['ai', 'education']
+    logger.info(f"📡 开始发送每日新闻（{len(active_topics)}个主题）...")
+    send_daily_news(active_topics)
 
     logger.info("\n💡 提示：")
-    logger.info("  - 可以修改 main() 函数来发送不同主题的新闻")
-    logger.info("  - 使用 send_daily_news(['ai', 'finance']) 发送多个主题")
+    logger.info("  - 当前配置：只发送AI科技、国际教育两个主题")
+    logger.info("  - 已取消推送：财经、创业、PBSA、Uhomes")
+    logger.info("  - AI科技RSS源：天行API + 36氪 + 少数派 + IT之家")
+    logger.info("  - 教育RSS源：芥末堆 + 黑板洞察 + 36氪")
+    logger.info("  - 如需修改主题，编辑 active_topics 列表")
     logger.info("  - 配合 cron 或定时任务实现自动推送")
 
 
