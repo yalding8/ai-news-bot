@@ -180,6 +180,19 @@ source venv/bin/activate
 pip install -r requirements.txt --upgrade
 ```
 
+### 提交并同步到 Git 仓库
+```bash
+# 查看变更
+git status
+
+# 添加并提交（替换提交信息）
+git add .
+git commit -m "chore: update ai-news-bot"
+
+# 推送到远端主分支（如不同分支请替换 main）
+git push origin main
+```
+
 ### 修改推送时间
 ```bash
 # 编辑定时任务

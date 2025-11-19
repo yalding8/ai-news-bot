@@ -9,6 +9,8 @@ import feedparser
 import logging
 from datetime import datetime
 from typing import List, Dict, Optional
+from requests.adapters import HTTPAdapter
+from urllib3.util import Retry
 from dotenv import load_dotenv
 
 # 加载环境变量
@@ -20,6 +22,19 @@ class NewsFetcher:
     """新闻获取器"""
 
     def __init__(self):
+        # 统一的HTTP会话 + 重试，提升请求稳定性
+        self.session = requests.Session()
+        retries = Retry(
+            total=3,
+            backoff_factor=0.5,
+            status_forcelist=[429, 500, 502, 503, 504],
+            allowed_methods={"GET", "POST"}
+        )
+        adapter = HTTPAdapter(max_retries=retries)
+        self.session.mount("http://", adapter)
+        self.session.mount("https://", adapter)
+        self.timeout = 10
+
         # 天行数据API配置
         self.tianapi_key = os.getenv('TIANAPI_KEY')
         self.tianapi_base = "http://api.tianapi.com"
@@ -108,7 +123,7 @@ class NewsFetcher:
             else:
                 logger.info(f"  └─ 使用天行数据接口: {endpoint}")
 
-            response = requests.post(url, data=params, timeout=10)
+            response = self.session.post(url, data=params, timeout=self.timeout)
             data = response.json()
 
             if data.get('code') == 200:
@@ -161,7 +176,7 @@ class NewsFetcher:
                 'pageSize': num
             }
 
-            response = requests.get(url, params=params, timeout=10)
+            response = self.session.get(url, params=params, timeout=self.timeout)
             data = response.json()
 
             if data.get('status') == 'ok':
@@ -236,7 +251,7 @@ class NewsFetcher:
             '新浪', '腾讯', '网易', '搜狐', '财新', '界面',
             'reuters', 'bloomberg', 'techcrunch', 'wired'
         ]
-        source = news.get('source', '').lower()
+        source = str(news.get('source', '') or '').lower()
         for trusted in trusted_sources:
             if trusted in source:
                 score += 20

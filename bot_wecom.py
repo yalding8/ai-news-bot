@@ -11,7 +11,9 @@ import logging
 from datetime import datetime
 from dotenv import load_dotenv
 from openai import OpenAI
-from news_fetcher import get_real_news, NewsFetcher
+from news_fetcher import NewsFetcher, TOPIC_KEYWORDS
+from requests.adapters import HTTPAdapter
+from urllib3.util import Retry
 
 # 加载环境变量
 load_dotenv()
@@ -26,6 +28,7 @@ logger = logging.getLogger(__name__)
 # 从环境变量读取配置
 WECOM_WEBHOOK_URL = os.getenv('WECOM_WEBHOOK_URL')
 DEEPSEEK_API_KEY = os.getenv('DEEPSEEK_API_KEY')
+ACTIVE_TOPICS_ENV = os.getenv('ACTIVE_TOPICS', 'ai,education')
 
 # 初始化DeepSeek客户端
 client = OpenAI(
@@ -43,6 +46,33 @@ NEWS_TOPICS = {
     'uhomes': {'name': '异乡好居', 'emoji': '🏡', 'desc': '异乡好居企业动态'}
 }
 
+# 复用新闻获取器（内置HTTP重试）
+news_fetcher = NewsFetcher()
+
+# 企业微信发送使用的HTTP会话（带重试）
+send_session = requests.Session()
+_retries = Retry(
+    total=3,
+    backoff_factor=0.5,
+    status_forcelist=[429, 500, 502, 503, 504],
+    allowed_methods={"POST"}
+)
+_adapter = HTTPAdapter(max_retries=_retries)
+send_session.mount("http://", _adapter)
+send_session.mount("https://", _adapter)
+
+
+def parse_active_topics(raw: str) -> list:
+    """从环境变量解析启用的主题列表"""
+    topics = []
+    for key in [t.strip() for t in raw.split(',')]:
+        if not key:
+            continue
+        if key in NEWS_TOPICS:
+            topics.append(key)
+        else:
+            logger.warning(f"⚠️ 忽略未知主题: {key}")
+    return topics
 
 def send_wecom_message(content: str, msgtype: str = "text") -> bool:
     """
@@ -76,18 +106,26 @@ def send_wecom_message(content: str, msgtype: str = "text") -> bool:
         }
 
     try:
-        response = requests.post(
+        response = send_session.post(
             WECOM_WEBHOOK_URL,
             json=data,
             timeout=10
         )
-        result = response.json()
+        if response.status_code != 200:
+            logger.error(f"❌ 消息发送失败 HTTP {response.status_code}: {response.text[:200]}")
+            return False
+
+        try:
+            result = response.json()
+        except ValueError:
+            logger.error(f"❌ 消息发送失败，非JSON响应: {response.text[:200]}")
+            return False
 
         if result.get('errcode') == 0:
             logger.info("✅ 消息发送成功")
             return True
         else:
-            logger.error(f"❌ 消息发送失败: {result.get('errmsg')}")
+            logger.error(f"❌ 消息发送失败 errcode={result.get('errcode')} errmsg={result.get('errmsg')}")
             return False
 
     except Exception as e:
@@ -116,7 +154,8 @@ def get_news(topic_key: str) -> str:
 
         # 第一步：获取真实新闻（获取更多新闻，让AI筛选精华）
         logger.info(f"  └─ 从所有新闻源获取真实新闻（API + RSS）...")
-        real_news = get_real_news(topic_key, num=10)  # 获取10条，已按质量排序
+        keywords = TOPIC_KEYWORDS.get(topic_key, [topic_key])
+        real_news = news_fetcher.fetch_news(topic_key, keywords, num=10)  # 获取10条，已按质量排序
 
         if not real_news:
             # 如果没有获取到真实新闻，返回说明
@@ -136,8 +175,7 @@ def get_news(topic_key: str) -> str:
 • 配置新闻API Key (TIANAPI_KEY 或 NEWSAPI_KEY)"""
 
         # 第二步：格式化真实新闻为文本
-        fetcher = NewsFetcher()
-        news_text = fetcher.format_news_for_ai(real_news)
+        news_text = news_fetcher.format_news_for_ai(real_news)
         logger.info(f"  └─ 获取到 {len(real_news)} 条真实新闻")
 
         # 第三步：让AI总结这些真实新闻
@@ -238,18 +276,18 @@ def main():
 
     logger.info("=" * 50)
 
-    # 只发送AI科技和国际教育两个主题的新闻
-    # 已取消：财经、创业、PBSA、Uhomes
-    active_topics = ['ai', 'education']
+    # 解析环境变量决定推送哪些主题
+    active_topics = parse_active_topics(ACTIVE_TOPICS_ENV)
+    if not active_topics:
+        active_topics = ['ai', 'education']
     logger.info(f"📡 开始发送每日新闻（{len(active_topics)}个主题）...")
     send_daily_news(active_topics)
 
     logger.info("\n💡 提示：")
-    logger.info("  - 当前配置：只发送AI科技、国际教育两个主题")
-    logger.info("  - 已取消推送：财经、创业、PBSA、Uhomes")
+    logger.info(f"  - 当前配置：ACTIVE_TOPICS={','.join(active_topics)}")
     logger.info("  - AI科技RSS源：天行API + 36氪 + 少数派 + IT之家")
     logger.info("  - 教育RSS源：芥末堆 + 黑板洞察 + 36氪")
-    logger.info("  - 如需修改主题，编辑 active_topics 列表")
+    logger.info("  - 如需修改主题，设置环境变量 ACTIVE_TOPICS=ai,education")
     logger.info("  - 配合 cron 或定时任务实现自动推送")
 
 
