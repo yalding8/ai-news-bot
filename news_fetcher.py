@@ -12,6 +12,7 @@ from typing import List, Dict, Optional
 from requests.adapters import HTTPAdapter
 from urllib3.util import Retry
 from dotenv import load_dotenv
+from config import TOPIC_KEYWORDS
 
 # 加载环境变量
 load_dotenv()
@@ -265,7 +266,7 @@ class NewsFetcher:
 
     def fetch_rss_news(self, topic_key: str, num: int = 5) -> List[Dict]:
         """
-        从RSS订阅源获取新闻
+        从RSS订阅源获取新闻（并行处理）
 
         Args:
             topic_key: 主题关键字
@@ -274,17 +275,20 @@ class NewsFetcher:
         Returns:
             新闻列表
         """
+        import concurrent.futures
+
         feeds = self.rss_feeds.get(topic_key, [])
         if not feeds:
             logger.info(f"未配置{topic_key}的RSS源")
             return []
 
         all_news = []
-        for feed_url in feeds:
-            try:
-                logger.info(f"  └─ 从RSS获取: {feed_url[:50]}...")
-                feed = feedparser.parse(feed_url)
 
+        def fetch_single_feed(feed_url):
+            try:
+                logger.info(f"  └─ [并行] 从RSS获取: {feed_url[:50]}...")
+                feed = feedparser.parse(feed_url)
+                feed_news = []
                 for entry in feed.entries[:num]:
                     # 提取新闻信息
                     news_item = {
@@ -294,19 +298,28 @@ class NewsFetcher:
                         'url': entry.get('link', ''),
                         'time': entry.get('published', entry.get('updated', ''))
                     }
-                    all_news.append(news_item)
-
-                logger.info(f"✅ RSS获取{len(feed.entries[:num])}条新闻")
-
+                    feed_news.append(news_item)
+                logger.info(f"✅ RSS获取{len(feed_news)}条新闻 ({feed_url[:30]}...)")
+                return feed_news
             except Exception as e:
                 logger.error(f"❌ RSS解析失败 {feed_url}: {e}")
-                continue
+                return []
+
+        # 并行获取所有RSS源
+        with concurrent.futures.ThreadPoolExecutor(max_workers=min(len(feeds), 5)) as executor:
+            future_to_url = {executor.submit(fetch_single_feed, url): url for url in feeds}
+            for future in concurrent.futures.as_completed(future_to_url):
+                try:
+                    feed_news = future.result()
+                    all_news.extend(feed_news)
+                except Exception as exc:
+                    logger.error(f"❌ RSS任务异常: {exc}")
 
         return all_news[:num]
 
     def fetch_news(self, topic: str, keywords: List[str], num: int = 10) -> List[Dict]:
         """
-        获取新闻（从所有源合并：API + RSS）
+        获取新闻（从所有源合并：API + RSS，并行处理）
 
         Args:
             topic: 主题名称（ai/finance/startup等）
@@ -316,27 +329,47 @@ class NewsFetcher:
         Returns:
             新闻列表（合并去重后的高质量新闻）
         """
+        import concurrent.futures
         all_news = []
 
-        # 从所有源获取新闻（不再使用优先级，而是合并所有源）
+        # 定义各个获取任务
+        def task_tianapi():
+            if self.tianapi_key and keywords:
+                # 使用第一个关键词作为搜索词（对于国内新闻接口）
+                return self.fetch_tianapi_news(topic, keyword=keywords[0], num=5)
+            return []
 
-        # 1. 天行数据API（根据主题调用不同的接口）
-        if self.tianapi_key and keywords:
-            # 使用第一个关键词作为搜索词（对于国内新闻接口）
-            tianapi_news = self.fetch_tianapi_news(topic, keyword=keywords[0], num=5)
-            all_news.extend(tianapi_news)
+        def task_rss():
+            return self.fetch_rss_news(topic, num=5)
 
-        # 2. RSS订阅源（总是调用，不管前面是否成功）
-        rss_news = self.fetch_rss_news(topic, num=5)
-        all_news.extend(rss_news)
+        def task_newsapi():
+            results = []
+            if self.newsapi_key:
+                # NewsAPI也可以并行，但这里简单起见，只对关键词并行（如果有多个）
+                # 或者直接串行，因为NewsAPI限制通常较严
+                for keyword in keywords:
+                    news = self.fetch_newsapi_news(keyword, num=3)
+                    results.extend(news)
+                    if news: # 只要获取到了就停止，避免过多请求
+                        break
+            return results
 
-        # 3. NewsAPI（总是调用，补充更多新闻）
-        if self.newsapi_key:  # 只有配置了才调用
-            for keyword in keywords:
-                newsapi_news = self.fetch_newsapi_news(keyword, num=3)
-                all_news.extend(newsapi_news)
-                if newsapi_news:
-                    break
+        # 并行执行三大类源的获取
+        with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
+            futures = {
+                executor.submit(task_tianapi): "TianAPI",
+                executor.submit(task_rss): "RSS",
+                executor.submit(task_newsapi): "NewsAPI"
+            }
+
+            for future in concurrent.futures.as_completed(futures):
+                source_name = futures[future]
+                try:
+                    news = future.result()
+                    all_news.extend(news)
+                    logger.info(f"✅ {source_name} 任务完成，获取 {len(news)} 条")
+                except Exception as exc:
+                    logger.error(f"❌ {source_name} 任务异常: {exc}")
 
         # 去重（按标题）
         seen_titles = set()
@@ -389,15 +422,6 @@ class NewsFetcher:
         return "\n".join(formatted)
 
 
-# 主题关键词映射
-TOPIC_KEYWORDS = {
-    'ai': ['人工智能', 'AI', '机器学习', '深度学习', 'ChatGPT', 'DeepSeek', '大模型'],
-    'finance': ['财经', '金融', '股市', '经济', '投资'],
-    'startup': ['创业', '融资', '风投', 'VC', '投资'],
-    'education': ['教育', '留学', '国际教育', '教育科技'],
-    'pbsa': ['学生公寓', 'PBSA', '租房', '宿舍'],
-    'uhomes': ['异乡好居', 'Uhomes', '留学生公寓']
-}
 
 
 def get_real_news(topic_key: str, num: int = 5) -> List[Dict]:

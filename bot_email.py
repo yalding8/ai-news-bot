@@ -4,61 +4,37 @@ AI新闻 邮件推送版本
 支持HTML格式的精美邮件推送
 """
 
-import os
 import smtplib
-import logging
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from email.header import Header
 from datetime import datetime
-from dotenv import load_dotenv
-from openai import OpenAI
 
-# 加载环境变量
-load_dotenv()
-
-# 配置日志
-logging.basicConfig(
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.INFO
+from config import (
+    SMTP_SERVER, SMTP_PORT, SMTP_USER, SMTP_PASSWORD, 
+    EMAIL_FROM, EMAIL_TO, NEWS_TOPICS, TOPIC_KEYWORDS, get_logger
 )
-logger = logging.getLogger(__name__)
+from news_fetcher import NewsFetcher
+from ai_summarizer import AISummarizer
 
-# 从环境变量读取配置
-SMTP_SERVER = os.getenv('SMTP_SERVER', 'smtp.gmail.com')
-SMTP_PORT = int(os.getenv('SMTP_PORT', '587'))
-SMTP_USER = os.getenv('SMTP_USER')
-SMTP_PASSWORD = os.getenv('SMTP_PASSWORD')
-EMAIL_FROM = os.getenv('EMAIL_FROM', SMTP_USER)
-EMAIL_TO = os.getenv('EMAIL_TO', SMTP_USER)  # 默认发给自己
-DEEPSEEK_API_KEY = os.getenv('DEEPSEEK_API_KEY')
+logger = get_logger(__name__)
 
-# 初始化DeepSeek客户端
-client = OpenAI(
-    api_key=DEEPSEEK_API_KEY,
-    base_url="https://api.deepseek.com"
-)
+# 初始化新闻获取器
+news_fetcher = NewsFetcher()
 
-# 新闻主题配置
-NEWS_TOPICS = {
-    'ai': {'name': 'AI科技', 'emoji': '🤖', 'desc': 'AI领域最新动态', 'color': '#4A90E2'},
-    'finance': {'name': '财经新闻', 'emoji': '💰', 'desc': '金融市场和经济动态', 'color': '#F5A623'},
-    'startup': {'name': '创业投资', 'emoji': '🚀', 'desc': '创业公司和投资动态', 'color': '#7ED321'},
-    'education': {'name': '国际教育', 'emoji': '🎓', 'desc': '国际教育行业动态', 'color': '#BD10E0'},
-    'pbsa': {'name': '学生公寓', 'emoji': '🏠', 'desc': 'PBSA学生公寓行业动态', 'color': '#50E3C2'},
-    'uhomes': {'name': '异乡好居', 'emoji': '🏡', 'desc': '异乡好居企业动态', 'color': '#FF6B6B'}
-}
+# 初始化AI总结器
+ai_summarizer = AISummarizer()
 
 
 def get_news(topic_key: str) -> str:
     """
-    获取指定主题的新闻
+    获取指定主题的新闻（集成真实新闻API）
 
     Args:
         topic_key: 新闻主题关键词
 
     Returns:
-        str: 新闻内容（Markdown格式）
+        str: 新闻内容（Markdown格式，包含总结和链接）
     """
     topic_info = NEWS_TOPICS.get(topic_key)
     if not topic_info:
@@ -69,38 +45,32 @@ def get_news(topic_key: str) -> str:
     try:
         today_date = datetime.now().strftime("%Y年%m月%d日")
 
-        # 不同主题的提示词
-        prompts = {
-            'ai': f"请总结{today_date}全球AI领域已经发生的真实新闻和动态。包括：技术突破🚀、产品发布📦、投资并购💰、政策法规📜",
-            'finance': f"请总结{today_date}全球财经领域已经发生的真实新闻。包括：市场动态📊、经济政策🏛️、企业财报💼、投资动向💰",
-            'startup': f"请总结{today_date}创业投资领域已经发生的真实新闻。包括：融资动态💰、新兴公司🚀、投资趋势📈、行业分析🔍",
-            'education': f"请总结{today_date}国际教育行业已经发生的真实新闻和动态。包括：留学政策🌍、教育科技💻、院校动态🏫、行业趋势📈",
-            'pbsa': f"请总结{today_date}PBSA(学生公寓)行业已经发生的真实新闻和动态。包括：市场动态🏠、投资并购💰、政策法规📜、项目开发🏗️",
-            'uhomes': f"请总结{today_date}异乡好居(Uhomes)公司已经发生的真实新闻和动态。包括：企业动态🏡、业务发展📈、投资融资💰、合作伙伴🤝"
-        }
+        # 1. 获取真实新闻
+        logger.info(f"  └─ 获取真实新闻数据...")
+        keywords = TOPIC_KEYWORDS.get(topic_key, [topic_key])
+        # 获取更多新闻供AI筛选
+        real_news = news_fetcher.fetch_news(topic_key, keywords, num=10)
 
-        response = client.chat.completions.create(
-            model="deepseek-chat",
-            messages=[{
-                "role": "user",
-                "content": f"""{prompts[topic_key]}
+        if not real_news:
+            logger.warning(f"  └─ 未获取到真实新闻")
+            return f"⚠️ 今日暂无{topic_info['name']}相关新闻（或API调用失败）。\n\n建议访问权威媒体查看。"
 
-⚠️ 重要要求：
-1. 只总结真实发生的新闻，不要推演、预测或虚构
-2. 如果今天没有相关新闻，明确说明"今日暂无相关新闻"，可以总结近1-2天的真实新闻
-3. 每条新闻必须标注具体的信息来源（媒体名称或官方发布）
-4. 按重要性排序，每条新闻2-3句话概括
-5. 使用Markdown格式，用emoji增强可读性
+        # 2. 格式化供AI阅读
+        news_text = news_fetcher.format_news_for_ai(real_news)
+        logger.info(f"  └─ 获取到 {len(real_news)} 条新闻，正在总结...")
 
-请开始总结真实新闻。"""
-            }],
-            max_tokens=2000,
-            temperature=0.3
-        )
+        # 3. AI总结
+        ai_summary = ai_summarizer.summarize_news(topic_key, real_news, news_text)
 
-        news_content = response.choices[0].message.content
-        logger.info(f"✅ {topic_info['name']} 获取成功")
-        return news_content
+        # 4. 附加原文链接
+        links_section = "\n\n### 🔗 原文链接\n"
+        for news in real_news[:5]:  # 只列出前5条链接
+            links_section += f"- [{news['title']}]({news['url']}) - {news['source']}\n"
+
+        final_content = ai_summary + links_section
+        
+        logger.info(f"✅ {topic_info['name']} 处理完成")
+        return final_content
 
     except Exception as e:
         logger.error(f"❌ 获取{topic_info['name']}时出错: {e}")
@@ -133,6 +103,9 @@ def markdown_to_html(markdown_text: str) -> str:
     html = re.sub(r'^\* (.*?)$', r'<li>\1</li>', html, flags=re.MULTILINE)
     html = re.sub(r'^- (.*?)$', r'<li>\1</li>', html, flags=re.MULTILINE)
 
+    # 处理链接
+    html = re.sub(r'\[(.*?)\]\((.*?)\)', r'<a href="\2" target="_blank">\1</a>', html)
+
     # 处理换行
     html = html.replace('\n\n', '</p><p>')
     html = '<p>' + html + '</p>'
@@ -140,8 +113,8 @@ def markdown_to_html(markdown_text: str) -> str:
     # 清理多余的p标签
     html = html.replace('<p><h', '<h')
     html = html.replace('</h1></p>', '</h1>')
-    html = html.replace('</h2></p>', '</h2>')
-    html = html.replace('</h3></p>', '</h3>')
+    html = html.replace('</h2></p>', '<h2>')
+    html = html.replace('</h3></p>', '<h3>')
     html = html.replace('<p><li>', '<li>')
     html = html.replace('</li></p>', '</li>')
 
@@ -287,14 +260,17 @@ def send_email(subject: str, html_content: str, to_email: str = None) -> bool:
         return False
 
 
+
 def send_daily_news(topics: list = None, to_email: str = None):
     """
-    发送每日新闻邮件
+    发送每日新闻邮件（并行处理）
 
     Args:
         topics: 要发送的主题列表，默认发送AI新闻
         to_email: 收件人邮箱
     """
+    import concurrent.futures
+
     if topics is None:
         topics = ['ai']
 
@@ -302,11 +278,27 @@ def send_daily_news(topics: list = None, to_email: str = None):
     logger.info(f"📰 开始获取每日新闻，主题: {', '.join(topics)}")
     logger.info("=" * 60)
 
-    # 获取所有主题的新闻
+    # 并行获取所有主题的新闻
     topics_news = {}
-    for topic_key in topics:
-        news = get_news(topic_key)
-        topics_news[topic_key] = news
+    
+    def fetch_topic_news(topic_key):
+        """获取单个主题新闻"""
+        return topic_key, get_news(topic_key)
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=min(len(topics), 5)) as executor:
+        future_to_topic = {executor.submit(fetch_topic_news, topic): topic for topic in topics}
+        
+        for future in concurrent.futures.as_completed(future_to_topic):
+            topic_key = future_to_topic[future]
+            try:
+                _, news_content = future.result()
+                topics_news[topic_key] = news_content
+            except Exception as exc:
+                logger.error(f"❌ {topic_key} 获取异常: {exc}")
+                topics_news[topic_key] = f"⚠️ 获取失败: {exc}"
+
+    # 按照原始顺序排序
+    ordered_news = {k: topics_news[k] for k in topics if k in topics_news}
 
     # 生成邮件标题
     today_date = datetime.now().strftime("%Y年%m月%d日")
@@ -314,7 +306,7 @@ def send_daily_news(topics: list = None, to_email: str = None):
     subject = f"📰 {today_date} - {' | '.join(topic_names)} 新闻日报"
 
     # 生成HTML内容
-    html_content = create_email_html(topics_news)
+    html_content = create_email_html(ordered_news)
 
     # 发送邮件
     success = send_email(subject, html_content, to_email)
@@ -341,10 +333,6 @@ def main():
         logger.info("   SMTP_USER=your_email@gmail.com")
         logger.info("   SMTP_PASSWORD=your_password")
         logger.info("   EMAIL_TO=recipient@example.com")
-        return
-
-    if not DEEPSEEK_API_KEY:
-        logger.error("❌ 错误：未配置 DEEPSEEK_API_KEY")
         return
 
     logger.info(f"📧 SMTP服务器: {SMTP_SERVER}:{SMTP_PORT}")

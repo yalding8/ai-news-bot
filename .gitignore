@@ -35,10 +35,9 @@ Thumbs.db
 *.bak
 *.backup
 
-# 部署相关
+# 部署相关（保留个人运行脚本，但允许部署脚本进入版本控制）
 run_news_bot.sh
 health_check.sh
-deploy.sh
 
 # 测试文件
 test_*.py

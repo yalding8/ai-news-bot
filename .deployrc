@@ -1,0 +1,23 @@
+# 部署配置文件
+# Deploy Configuration
+
+# 服务器信息 (Server Information)
+SERVER_IP="39.97.39.74"
+SERVER_USER="admin"  # 阿里云轻量服务器默认用户
+SERVER_PORT="22"
+
+# 部署路径 (Deploy Path)
+REMOTE_DIR="/opt/apps/ai-news-bot"
+
+# 备份配置 (Backup Configuration)
+BACKUP_DIR="/opt/backups/ai-news-bot"
+MAX_BACKUPS=5
+
+# 服务名称 (Service Name)
+SERVICE_NAME="ai-news-bot"
+
+# 是否重启服务 (Restart Service)
+RESTART_SERVICE=true
+
+# 是否安装依赖 (Install Dependencies)
+INSTALL_DEPS=true
