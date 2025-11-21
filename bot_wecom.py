@@ -18,6 +18,7 @@ from config import (
 )
 from news_fetcher import NewsFetcher, TOPIC_KEYWORDS
 from ai_summarizer import AISummarizer
+from news_cache import filter_new_news, mark_news_as_sent
 
 logger = get_logger(__name__)
 
@@ -133,12 +134,17 @@ def get_news(topic_key: str) -> str:
         # 第一步：获取真实新闻（获取更多新闻，让AI筛选精华）
         logger.info(f"  └─ 从所有新闻源获取真实新闻（API + RSS）...")
         keywords = TOPIC_KEYWORDS.get(topic_key, [topic_key])
-        real_news = news_fetcher.fetch_news(topic_key, keywords, num=10)  # 获取10条，已按质量排序
+        all_news = news_fetcher.fetch_news(topic_key, keywords, num=15)  # 获取15条，已按质量排序
+        
+        # 第二步：过滤出未推送过的新闻
+        logger.info(f"  └─ 过滤重复新闻...")
+        real_news = filter_new_news(topic_key, all_news)  # 过滤出24小时内未推送的新闻
 
         if not real_news:
-            # 如果没有获取到真实新闻，返回说明
-            logger.warning(f"  └─ 未获取到真实新闻，使用备用方案")
-            return f"""{topic_info['emoji']} {topic_info['name']} - {today_date}
+            if not all_news:
+                # 如果没有获取到任何新闻
+                logger.warning(f"  └─ 未获取到真实新闻，使用备用方案")
+                return f"""{topic_info['emoji']} {topic_info['name']} - {today_date}
 
 ⚠️ 暂时无法获取实时新闻
 
@@ -151,6 +157,22 @@ def get_news(topic_key: str) -> str:
 • 稍后重试
 • 访问权威新闻网站查看
 • 配置新闻API Key (TIANAPI_KEY 或 NEWSAPI_KEY)"""
+            else:
+                # 如果有新闻但都是重复的
+                logger.info(f"  └─ 今日{topic_info['name']}暂无新内容（已获取{len(all_news)}条，均为24小时内已推送）")
+                return f"""{topic_info['emoji']} {topic_info['name']} - {today_date}
+
+📰 今日暂无新内容
+
+✅ 已获取到 {len(all_news)} 条新闻，但均为24小时内已推送过的内容
+
+💡 说明：
+• 系统已自动过滤重复内容
+• 确保每次推送都是最新资讯
+• 明日将继续为您推送最新动态
+
+────────────────
+🔄 智能去重系统正常运行"""
 
         # 第二步：格式化真实新闻为文本
         news_text = news_fetcher.format_news_for_ai(real_news)
@@ -159,8 +181,11 @@ def get_news(topic_key: str) -> str:
         # 第三步：让AI总结这些真实新闻
         ai_summary = ai_summarizer.summarize_news(topic_key, real_news, news_text)
         logger.info(f"✅ {topic_info['name']} 获取成功")
+        
+        # 第四步：标记新闻为已推送（在成功生成内容后）
+        mark_news_as_sent(topic_key, real_news)
 
-        # 第四步：格式化最终消息（包含新闻链接）
+        # 第五步：格式化最终消息（包含新闻链接）
         news_links = "\n".join([
             f"• {news['title']}\n  {news['url']}"
             for news in real_news[:3]  # 只显示前3条链接

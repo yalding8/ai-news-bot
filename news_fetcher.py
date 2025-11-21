@@ -61,6 +61,11 @@ class NewsFetcher:
                 'https://www.36kr.com/feed',              # 36氪科技新闻
                 'https://sspai.com/feed',                 # 少数派（数字生活方式）
                 'https://www.ithome.com/rss/',            # IT之家
+                'https://www.huxiu.com/rss/0.xml',        # 虎嗅科技
+                'https://feeds.feedburner.com/venturebeat/SZYF', # VentureBeat AI
+                'https://techcrunch.com/feed/',           # TechCrunch
+                'https://www.theverge.com/rss/index.xml', # The Verge
+                'https://feeds.feedburner.com/oreilly/radar', # O'Reilly Radar
             ],
             'finance': [
                 'https://www.huxiu.com/rss/0.xml',        # 虎嗅财经
@@ -76,6 +81,10 @@ class NewsFetcher:
                 'https://www.jiemodui.com/rss.xml',       # 芥末堆（教育产业垂直媒体）
                 'https://www.heibandongcha.com/feed',     # 黑板洞察（教育产业数据研究）
                 'https://www.36kr.com/feed',              # 36氪教育频道
+                'https://feeds.feedburner.com/EducationWeek', # Education Week
+                'https://www.insidehighered.com/rss.xml', # Inside Higher Ed
+                'https://www.timeshighereducation.com/rss.xml', # Times Higher Education
+                'https://www.universityworldnews.com/rss.php', # University World News
             ],
             'pbsa': [
                 'https://www.36kr.com/feed',              # 36氪房地产科技
@@ -317,6 +326,40 @@ class NewsFetcher:
 
         return all_news[:num]
 
+    def is_news_recent(self, news_time: str, max_days: int = 7) -> bool:
+        """
+        检查新闻是否在指定天数内
+        
+        Args:
+            news_time: 新闻时间字符串
+            max_days: 最大天数
+            
+        Returns:
+            bool: 是否为最近新闻
+        """
+        if not news_time:
+            return True  # 如果没有时间信息，默认认为是最近的
+            
+        try:
+            from dateutil import parser
+            from datetime import datetime, timedelta
+            
+            # 解析新闻时间
+            news_date = parser.parse(news_time)
+            # 移除时区信息进行比较
+            if news_date.tzinfo:
+                news_date = news_date.replace(tzinfo=None)
+                
+            # 当前时间
+            now = datetime.now()
+            
+            # 检查是否在指定天数内
+            return (now - news_date).days <= max_days
+            
+        except Exception as e:
+            logger.warning(f"解析新闻时间失败 '{news_time}': {e}")
+            return True  # 解析失败时默认认为是最近的
+
     def fetch_news(self, topic: str, keywords: List[str], num: int = 10) -> List[Dict]:
         """
         获取新闻（从所有源合并：API + RSS，并行处理）
@@ -371,13 +414,22 @@ class NewsFetcher:
                 except Exception as exc:
                     logger.error(f"❌ {source_name} 任务异常: {exc}")
 
-        # 去重（按标题）
+        # 去重和时间过滤（按标题去重，只保留最近7天的新闻）
         seen_titles = set()
         unique_news = []
         for news in all_news:
-            if news['title'] not in seen_titles:
-                seen_titles.add(news['title'])
+            title = news['title']
+            news_time = news.get('time', '')
+            
+            # 检查是否重复和是否为最近新闻
+            if title not in seen_titles and self.is_news_recent(news_time, max_days=7):
+                seen_titles.add(title)
                 unique_news.append(news)
+                logger.debug(f"✅ 保留新闻: {title[:50]}... (时间: {news_time})")
+            elif title in seen_titles:
+                logger.debug(f"❌ 去重: {title[:50]}...")
+            else:
+                logger.debug(f"❌ 过时: {title[:50]}... (时间: {news_time})")
 
         # 质量评分和排序
         for news in unique_news:

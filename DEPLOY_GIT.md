@@ -64,3 +64,48 @@ python3 bot_wecom.py
 cat .env
 ```
 然后复制到服务器的 `.env` 文件中。
+
+## 📊 监控与维护
+
+在阿里云控制台终端中，你可以使用以下命令检查程序状态：
+
+### 1. 检查程序是否在运行
+查看是否有正在运行的 Python 进程：
+```bash
+ps -ef | grep bot_wecom.py
+```
+
+### 2. 查看运行日志
+查看程序的输出日志（包括报错信息）：
+```bash
+# 实时查看最新日志
+tail -f /var/log/ai-news.log
+
+# 查看最后100行
+tail -n 100 /var/log/ai-news.log
+```
+
+### 3. 检查定时任务
+确认定时任务是否已正确设置：
+```bash
+crontab -l
+```
+应该看到类似：`0 9 * * * ... python3 bot_wecom.py ...`
+
+### 4. 检查系统定时日志
+如果定时任务没有执行，查看系统日志：
+```bash
+# Ubuntu
+grep CRON /var/log/syslog
+
+# CentOS/Aliyun Linux
+grep CRON /var/log/cron
+```
+
+### 5. 手动测试运行
+如果你想立即测试一次：
+```bash
+cd /opt/apps/ai-news-bot
+source venv/bin/activate
+python3 bot_wecom.py
+```
