@@ -20,13 +20,7 @@ DEEPSEEK_API_KEY = os.getenv('DEEPSEEK_API_KEY')
 TIANAPI_KEY = os.getenv('TIANAPI_KEY')
 NEWSAPI_KEY = os.getenv('NEWSAPI_KEY')
 
-# Email Configuration
-SMTP_SERVER = os.getenv('SMTP_SERVER', 'smtp.gmail.com')
-SMTP_PORT = int(os.getenv('SMTP_PORT', '587'))
-SMTP_USER = os.getenv('SMTP_USER')
-SMTP_PASSWORD = os.getenv('SMTP_PASSWORD')
-EMAIL_FROM = os.getenv('EMAIL_FROM', SMTP_USER)
-EMAIL_TO = os.getenv('EMAIL_TO', SMTP_USER)
+
 
 # Active Topics
 ACTIVE_TOPICS_ENV = os.getenv('ACTIVE_TOPICS', 'ai,education')

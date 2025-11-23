@@ -57,7 +57,7 @@ fi
 # 3. 停止现有服务（如果正在运行）
 log_info "检查并停止现有进程..."
 pkill -f "python.*bot_wecom.py" || log_warn "没有发现运行中的 bot_wecom.py 进程"
-pkill -f "python.*bot_email.py" || log_warn "没有发现运行中的 bot_email.py 进程"
+
 sleep 2
 
 # 4. 解压上传的代码

@@ -58,29 +58,35 @@ class NewsFetcher:
         # 为每个主题配置了更精准的RSS源，提高新闻相关性
         self.rss_feeds = {
             'ai': [
+                'https://www.qbitai.com/feed',            # 量子位（新增）
+                'https://www.jiqizhixin.com/rss',         # 机器之心（新增）
                 'https://www.36kr.com/feed',              # 36氪科技新闻
-                'https://sspai.com/feed',                 # 少数派（数字生活方式）
+                'https://sspai.com/feed',                 # 少数派
                 'https://www.ithome.com/rss/',            # IT之家
                 'https://www.huxiu.com/rss/0.xml',        # 虎嗅科技
                 'https://feeds.feedburner.com/venturebeat/SZYF', # VentureBeat AI
                 'https://techcrunch.com/feed/',           # TechCrunch
                 'https://www.theverge.com/rss/index.xml', # The Verge
                 'https://feeds.feedburner.com/oreilly/radar', # O'Reilly Radar
+                'https://hnrss.org/newest?q=AI',          # Hacker News (AI topic)（新增）
+                'http://feeds.arstechnica.com/arstechnica/index', # Ars Technica（新增）
+                'https://www.wired.com/feed/category/science/latest/rss', # Wired Science（新增）
             ],
             'finance': [
                 'https://www.huxiu.com/rss/0.xml',        # 虎嗅财经
                 'https://www.36kr.com/feed',              # 36氪（包含财经内容）
-                'http://dedicated.wallstreetcn.com/rss.xml', # 华尔街见闻（如果可用）
+                'http://dedicated.wallstreetcn.com/rss.xml', # 华尔街见闻
             ],
             'startup': [
-                'http://www.cyzone.cn/rss/',              # 创业邦（创投垂直媒体）
+                'http://www.cyzone.cn/rss/',              # 创业邦
                 'https://www.huxiu.com/rss/0.xml',        # 虎嗅创投
                 'https://www.36kr.com/feed',              # 36氪创投
+                'https://hnrss.org/newest?q=startup',     # Hacker News (Startup)
             ],
             'education': [
-                'https://www.jiemodui.com/rss.xml',       # 芥末堆（教育产业垂直媒体）
-                'https://www.heibandongcha.com/feed',     # 黑板洞察（教育产业数据研究）
-                'https://www.36kr.com/feed',              # 36氪教育频道
+                'https://www.jiemodui.com/rss.xml',       # 芥末堆
+                'https://www.heibandongcha.com/feed',     # 黑板洞察
+                'https://www.36kr.com/feed',              # 36氪教育
                 'https://feeds.feedburner.com/EducationWeek', # Education Week
                 'https://www.insidehighered.com/rss.xml', # Inside Higher Ed
                 'https://www.timeshighereducation.com/rss.xml', # Times Higher Education
@@ -91,7 +97,7 @@ class NewsFetcher:
                 'https://www.huxiu.com/rss/0.xml',        # 虎嗅地产
             ],
             'uhomes': [
-                'https://www.36kr.com/feed',              # 36氪（包含留学、房产相关）
+                'https://www.36kr.com/feed',              # 36氪
                 'https://www.huxiu.com/rss/0.xml',        # 虎嗅
             ]
         }
@@ -259,7 +265,9 @@ class NewsFetcher:
         trusted_sources = [
             '36kr', '36氪', 'IT之家', '虎嗅', '少数派', 'sspai',
             '新浪', '腾讯', '网易', '搜狐', '财新', '界面',
-            'reuters', 'bloomberg', 'techcrunch', 'wired'
+            'reuters', 'bloomberg', 'techcrunch', 'wired',
+            'qbitai', '量子位', 'jiqizhixin', '机器之心',
+            'mit technology review', 'hacker news', 'ars technica'
         ]
         source = str(news.get('source', '') or '').lower()
         for trusted in trusted_sources:
@@ -360,6 +368,34 @@ class NewsFetcher:
             logger.warning(f"解析新闻时间失败 '{news_time}': {e}")
             return True  # 解析失败时默认认为是最近的
 
+    def apply_diversity_filter(self, news_list: List[Dict], max_per_source: int = 2) -> List[Dict]:
+        """
+        应用多样性过滤器：限制每个来源的新闻数量
+        
+        Args:
+            news_list: 已排序的新闻列表
+            max_per_source: 每个来源允许的最大数量
+            
+        Returns:
+            List[Dict]: 过滤后的新闻列表
+        """
+        source_counts = {}
+        filtered_news = []
+        
+        for news in news_list:
+            source = news.get('source', 'Unknown')
+            # 简化来源名称以进行归一化（例如 "IT之家 RSS" -> "IT之家"）
+            # 这里简单处理，直接使用完整source字符串
+            
+            count = source_counts.get(source, 0)
+            if count < max_per_source:
+                filtered_news.append(news)
+                source_counts[source] = count + 1
+            else:
+                logger.debug(f"🔍 过滤掉同源新闻: {news['title']} (来源: {source})")
+                
+        return filtered_news
+
     def fetch_news(self, topic: str, keywords: List[str], num: int = 10) -> List[Dict]:
         """
         获取新闻（从所有源合并：API + RSS，并行处理）
@@ -440,12 +476,16 @@ class NewsFetcher:
 
         logger.info(f"📰 {topic}: 从所有源获取{len(unique_news)}条真实新闻，已按质量排序")
 
+        # 应用多样性过滤器（每个来源最多2条）
+        diverse_news = self.apply_diversity_filter(unique_news, max_per_source=2)
+        logger.info(f"🔍 多样性过滤: {len(unique_news)} -> {len(diverse_news)} 条")
+
         # 返回高质量新闻（只返回评分>30的新闻）
-        quality_news = [n for n in unique_news if n.get('quality_score', 0) > 30]
+        quality_news = [n for n in diverse_news if n.get('quality_score', 0) > 30]
 
         if not quality_news:
             # 如果没有高质量新闻，至少返回评分最高的几条
-            return unique_news[:num]
+            return diverse_news[:num]
 
         return quality_news[:num]  # 返回前N条高质量新闻（默认10条）
 
