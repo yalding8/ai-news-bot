@@ -58,8 +58,8 @@ class NewsFetcher:
         # 为每个主题配置了更精准的RSS源，提高新闻相关性
         self.rss_feeds = {
             'ai': [
-                'https://www.qbitai.com/feed',            # 量子位（新增）
-                'https://www.jiqizhixin.com/rss',         # 机器之心（新增）
+                'https://www.qbitai.com/feed',            # 量子位
+                'https://www.jiqizhixin.com/rss',         # 机器之心
                 'https://www.36kr.com/feed',              # 36氪科技新闻
                 'https://sspai.com/feed',                 # 少数派
                 'https://www.ithome.com/rss/',            # IT之家
@@ -68,9 +68,16 @@ class NewsFetcher:
                 'https://techcrunch.com/feed/',           # TechCrunch
                 'https://www.theverge.com/rss/index.xml', # The Verge
                 'https://feeds.feedburner.com/oreilly/radar', # O'Reilly Radar
-                'https://hnrss.org/newest?q=AI',          # Hacker News (AI topic)（新增）
-                'http://feeds.arstechnica.com/arstechnica/index', # Ars Technica（新增）
-                'https://www.wired.com/feed/category/science/latest/rss', # Wired Science（新增）
+                'https://hnrss.org/newest?q=AI',          # Hacker News (AI topic)
+                'http://feeds.arstechnica.com/arstechnica/index', # Ars Technica
+                'https://www.wired.com/feed/category/science/latest/rss', # Wired Science
+                'https://ai.googleblog.com/feeds/posts/default', # Google AI Blog（新增）
+                'https://openai.com/blog/rss',            # OpenAI Blog（新增）
+                'https://paperswithcode.com/rss.xml',     # Papers with Code（新增）
+                'https://aiweekly.co/rss',                # AI Weekly（新增）
+                'https://www.geekpark.net/rss',           # 极客公园（新增）
+                'https://www.ifanr.com/feed',             # 爱范儿（新增）
+                'https://www.pingwest.com/feed',          # PingWest品玩（新增）
             ],
             'finance': [
                 'https://www.huxiu.com/rss/0.xml',        # 虎嗅财经
@@ -82,6 +89,7 @@ class NewsFetcher:
                 'https://www.huxiu.com/rss/0.xml',        # 虎嗅创投
                 'https://www.36kr.com/feed',              # 36氪创投
                 'https://hnrss.org/newest?q=startup',     # Hacker News (Startup)
+                'https://news.crunchbase.com/feed/',      # Crunchbase News（新增）
             ],
             'education': [
                 'https://www.jiemodui.com/rss.xml',       # 芥末堆
@@ -91,6 +99,8 @@ class NewsFetcher:
                 'https://www.insidehighered.com/rss.xml', # Inside Higher Ed
                 'https://www.timeshighereducation.com/rss.xml', # Times Higher Education
                 'https://www.universityworldnews.com/rss.php', # University World News
+                'https://www.edsurge.com/news.rss',       # EdSurge（新增）
+                'https://www.chronicle.com/section/news/6/rss', # Chronicle of Higher Ed（新增）
             ],
             'pbsa': [
                 'https://www.36kr.com/feed',              # 36氪房地产科技
@@ -266,8 +276,11 @@ class NewsFetcher:
             '36kr', '36氪', 'IT之家', '虎嗅', '少数派', 'sspai',
             '新浪', '腾讯', '网易', '搜狐', '财新', '界面',
             'reuters', 'bloomberg', 'techcrunch', 'wired',
-            'qbitai', '量子位', 'jiqizhixin', '机器之心',
-            'mit technology review', 'hacker news', 'ars technica'
+            '量子位', 'qbitai', '机器之心', 'jiqizhixin',
+            'mit technology review', 'hacker news', 'ars technica',
+            'google ai', 'openai', 'papers with code', 'aiweekly',
+            '极客公园', 'geekpark', '爱范儿', 'ifanr', 'pingwest', '品玩',
+            'edsurge', 'chronicle', 'crunchbase'
         ]
         source = str(news.get('source', '') or '').lower()
         for trusted in trusted_sources:
