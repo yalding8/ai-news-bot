@@ -11,7 +11,7 @@ from requests.adapters import HTTPAdapter
 from urllib3.util import Retry
 
 from config import (
-    WECOM_WEBHOOK_URL, 
+    WECOM_WEBHOOK_URLS, 
     NEWS_TOPICS, 
     ACTIVE_TOPICS_ENV, 
     get_logger
@@ -64,7 +64,7 @@ def send_wecom_message(content: str, msgtype: str = "text") -> bool:
     Returns:
         bool: 发送是否成功
     """
-    if not WECOM_WEBHOOK_URL:
+    if not WECOM_WEBHOOK_URLS:
         logger.error("错误：未设置 WECOM_WEBHOOK_URL")
         return False
 
@@ -84,32 +84,37 @@ def send_wecom_message(content: str, msgtype: str = "text") -> bool:
             }
         }
 
-    try:
-        response = send_session.post(
-            WECOM_WEBHOOK_URL,
-            json=data,
-            timeout=10
-        )
-        if response.status_code != 200:
-            logger.error(f"❌ 消息发送失败 HTTP {response.status_code}: {response.text[:200]}")
-            return False
-
+    all_success = True
+    for webhook_url in WECOM_WEBHOOK_URLS:
         try:
-            result = response.json()
-        except ValueError:
-            logger.error(f"❌ 消息发送失败，非JSON响应: {response.text[:200]}")
-            return False
+            response = send_session.post(
+                webhook_url,
+                json=data,
+                timeout=10
+            )
+            if response.status_code != 200:
+                logger.error(f"❌ 消息发送失败 ({webhook_url[-10:]}) HTTP {response.status_code}: {response.text[:200]}")
+                all_success = False
+                continue
 
-        if result.get('errcode') == 0:
-            logger.info("✅ 消息发送成功")
-            return True
-        else:
-            logger.error(f"❌ 消息发送失败 errcode={result.get('errcode')} errmsg={result.get('errmsg')}")
-            return False
+            try:
+                result = response.json()
+            except ValueError:
+                logger.error(f"❌ 消息发送失败，非JSON响应: {response.text[:200]}")
+                all_success = False
+                continue
 
-    except Exception as e:
-        logger.error(f"❌ 发送消息时出错: {e}")
-        return False
+            if result.get('errcode') == 0:
+                logger.info(f"✅ 消息发送成功 ({webhook_url[-10:]})")
+            else:
+                logger.error(f"❌ 消息发送失败 errcode={result.get('errcode')} errmsg={result.get('errmsg')}")
+                all_success = False
+
+        except Exception as e:
+            logger.error(f"❌ 发送消息时出错 ({webhook_url[-10:]}): {e}")
+            all_success = False
+
+    return all_success
 
 
 def get_news(topic_key: str) -> str:
@@ -251,7 +256,7 @@ def send_daily_news(topics: list = None):
 
 def main():
     """主函数"""
-    if not WECOM_WEBHOOK_URL:
+    if not WECOM_WEBHOOK_URLS:
         logger.error("错误：未设置 WECOM_WEBHOOK_URL")
         logger.info("请在 .env 文件中设置企业微信Webhook URL")
         return
