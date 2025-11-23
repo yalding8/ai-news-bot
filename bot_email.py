@@ -55,16 +55,19 @@ def get_news(topic_key: str) -> str:
             logger.warning(f"  └─ 未获取到真实新闻")
             return f"⚠️ 今日暂无{topic_info['name']}相关新闻（或API调用失败）。\n\n建议访问权威媒体查看。"
 
-        # 2. 格式化供AI阅读
-        news_text = news_fetcher.format_news_for_ai(real_news)
-        logger.info(f"  └─ 获取到 {len(real_news)} 条新闻，正在总结...")
+        # 2. 截取前5条高质量新闻（确保AI总结和链接一致）
+        top_news = real_news[:5]
+        
+        # 3. 格式化供AI阅读
+        news_text = news_fetcher.format_news_for_ai(top_news)
+        logger.info(f"  └─ 获取到 {len(real_news)} 条新闻，选取前 {len(top_news)} 条进行总结...")
 
-        # 3. AI总结
-        ai_summary = ai_summarizer.summarize_news(topic_key, real_news, news_text)
+        # 4. AI总结
+        ai_summary = ai_summarizer.summarize_news(topic_key, top_news, news_text)
 
-        # 4. 附加原文链接
+        # 5. 附加原文链接
         links_section = "\n\n### 🔗 原文链接\n"
-        for news in real_news[:5]:  # 只列出前5条链接
+        for news in top_news:
             links_section += f"- [{news['title']}]({news['url']}) - {news['source']}\n"
 
         final_content = ai_summary + links_section
