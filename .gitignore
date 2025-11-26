@@ -42,3 +42,9 @@ health_check.sh
 # 测试文件（排除临时测试文件，但保留 tests/ 目录中的测试）
 # test_*.py
 # *_test.py
+
+# Hypothesis 测试生成的数据
+.hypothesis/
+
+# 新闻缓存文件
+.news_cache.json
