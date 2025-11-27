@@ -42,12 +42,21 @@ class NewsFetcher:
 
         # 天行数据API接口映射（不同主题对应不同的接口）
         self.tianapi_endpoints = {
-            'ai': '/ai/index',           # AI资讯专用接口
-            'finance': '/caijing/index',  # 财经新闻专用接口
-            'startup': '/guonei/index',   # 创业新闻使用国内新闻+关键词
-            'education': '/guonei/index', # 教育新闻使用国内新闻+关键词
-            'pbsa': '/guonei/index',      # PBSA新闻使用国内新闻+关键词
-            'uhomes': '/guonei/index'     # Uhomes新闻使用国内新闻+关键词
+            'ai': '/ai/index',            # AI资讯专用接口
+            'finance': '/caijing/index',   # 财经新闻专用接口
+            'startup': '/guonei/index',    # 创业新闻使用国内新闻+关键词
+
+            # 国际教育服务行业专业主题
+            'study_abroad': '/guonei/index',  # 留学资讯使用国内新闻+关键词
+            'edu_policy': '/guonei/index',    # 教育政策使用国内新闻+关键词
+            'uni_rankings': '/guonei/index',  # 院校排名使用国内新闻+关键词
+            'edu_market': '/guonei/index',    # 教育市场使用国内新闻+关键词
+            'competitors': '/guonei/index',   # 竞品动态使用国内新闻+关键词
+
+            # 原有主题
+            'education': '/guonei/index',  # 教育新闻使用国内新闻+关键词
+            'pbsa': '/guonei/index',       # PBSA新闻使用国内新闻+关键词
+            'uhomes': '/guonei/index'      # Uhomes新闻使用国内新闻+关键词
         }
 
         # NewsAPI配置
@@ -91,16 +100,65 @@ class NewsFetcher:
                 'https://hnrss.org/newest?q=startup',     # Hacker News (Startup)
                 'https://news.crunchbase.com/feed/',      # Crunchbase News（新增）
             ],
-            'education': [
-                'https://www.jiemodui.com/rss.xml',       # 芥末堆
-                'https://www.heibandongcha.com/feed',     # 黑板洞察
-                'https://www.36kr.com/feed',              # 36氪教育
-                'https://feeds.feedburner.com/EducationWeek', # Education Week
-                'https://www.insidehighered.com/rss.xml', # Inside Higher Ed
+            # 国际教育服务行业专业RSS源
+            'study_abroad': [
+                # 留学行业权威媒体
+                'https://thepienews.com/feed/',              # The PIE News（留学行业权威）
+                'https://www.studyinternational.com/feed/',  # Study International
+                'https://www.topuniversities.com/rss',       # QS 留学资讯
+                # 官方机构
+                'https://www.nafsa.org/rss.xml',             # NAFSA（美国国际教育者协会）
+                # 中文留学媒体
+                'https://www.jiemodui.com/rss.xml',          # 芥末堆
+                'https://www.heibandongcha.com/feed',        # 黑板洞察
+                'https://www.36kr.com/feed',                 # 36氪教育
+            ],
+
+            'edu_policy': [
+                # 政策类RSS源
+                'https://www.nafsa.org/rss.xml',             # NAFSA（美国国际教育）
+                'https://thepienews.com/feed/',              # The PIE News（政策报道）
+                'https://www.studyinternational.com/feed/',  # Study International
+                'https://www.jiemodui.com/rss.xml',          # 芥末堆（中国教育政策）
+            ],
+
+            'uni_rankings': [
+                # 排名类RSS源
+                'https://www.topuniversities.com/rss',       # QS World Rankings
                 'https://www.timeshighereducation.com/rss.xml', # Times Higher Education
                 'https://www.universityworldnews.com/rss.php', # University World News
-                'https://www.edsurge.com/news.rss',       # EdSurge（新增）
-                'https://www.chronicle.com/section/news/6/rss', # Chronicle of Higher Ed（新增）
+            ],
+
+            'edu_market': [
+                # 市场数据和分析
+                'https://monitor.icef.com/feed/',            # ICEF Monitor（留学市场数据）
+                'https://thepienews.com/feed/',              # The PIE News
+                'https://www.jiemodui.com/rss.xml',          # 芥末堆（市场分析）
+                'https://www.heibandongcha.com/feed',        # 黑板洞察
+                'https://www.edsurge.com/news.rss',          # EdSurge
+            ],
+
+            'competitors': [
+                # 竞品和行业动态
+                'https://www.jiemodui.com/rss.xml',          # 芥末堆
+                'https://www.heibandongcha.com/feed',        # 黑板洞察
+                'https://www.36kr.com/feed',                 # 36氪（融资并购）
+                'https://news.crunchbase.com/feed/',         # Crunchbase News
+                'https://techcrunch.com/category/education/feed/', # TechCrunch教育
+                'https://www.edsurge.com/news.rss',          # EdSurge
+            ],
+
+            # 原有教育主题（保留，作为综合教育资讯）
+            'education': [
+                'https://www.jiemodui.com/rss.xml',          # 芥末堆
+                'https://www.heibandongcha.com/feed',        # 黑板洞察
+                'https://www.36kr.com/feed',                 # 36氪教育
+                'https://feeds.feedburner.com/EducationWeek', # Education Week
+                'https://www.insidehighered.com/rss.xml',    # Inside Higher Ed
+                'https://www.timeshighereducation.com/rss.xml', # Times Higher Education
+                'https://www.universityworldnews.com/rss.php', # University World News
+                'https://www.edsurge.com/news.rss',          # EdSurge
+                'https://www.chronicle.com/section/news/6/rss', # Chronicle of Higher Ed
             ],
             'pbsa': [
                 'https://www.36kr.com/feed',              # 36氪房地产科技

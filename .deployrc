@@ -2,8 +2,8 @@
 # Deploy Configuration
 
 # 服务器信息 (Server Information)
-SERVER_IP="39.97.39.74"
-SERVER_USER="admin"  # 阿里云轻量服务器默认用户
+SERVER_IP="157.245.51.54"
+SERVER_USER="root"  # DigitalOcean 服务器默认用户
 SERVER_PORT="22"
 
 # 部署路径 (Deploy Path)

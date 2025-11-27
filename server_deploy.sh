@@ -115,13 +115,25 @@ python3 -c "import bot_wecom; import news_fetcher; import config" && \
     log_error "模块导入测试失败，请检查代码"
 
 # 10. 设置定时任务
-log_info "检查定时任务..."
+log_info "设置定时任务..."
+CRON_CMD="0 9 * * * cd $REMOTE_DIR/code && $REMOTE_DIR/venv/bin/python3 bot_wecom.py >> /var/log/ai-news.log 2>&1"
+
+# 检查定时任务是否已存在
 if ! crontab -l 2>/dev/null | grep -q "bot_wecom.py"; then
-    log_warn "未发现定时任务，请手动设置"
-    log_info "建议添加: 0 9 * * * cd $REMOTE_DIR && $REMOTE_DIR/venv/bin/python3 bot_wecom.py >> /var/log/ai-news.log 2>&1"
+    log_info "添加新的定时任务..."
+    # 获取现有的crontab（如果有）
+    (crontab -l 2>/dev/null; echo "$CRON_CMD") | crontab -
+    log_info "✓ 定时任务已添加: 每天早上9点执行"
 else
-    log_info "定时任务已配置"
+    log_info "定时任务已存在，更新中..."
+    # 删除旧的bot_wecom.py任务，添加新的
+    (crontab -l 2>/dev/null | grep -v "bot_wecom.py"; echo "$CRON_CMD") | crontab -
+    log_info "✓ 定时任务已更新"
 fi
+
+# 确认定时任务已设置
+log_info "当前定时任务："
+crontab -l 2>/dev/null | grep "bot_wecom.py" || log_warn "定时任务设置失败"
 
 # 11. 生成部署报告
 log_info "生成部署报告..."
