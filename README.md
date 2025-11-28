@@ -158,47 +158,53 @@ ai-news-bot/
 
 ## 🔧 管理和维护
 
-### 查看日志
+### 1. 代码更新与部署
+
+我们提供两种部署方式，请根据实际情况选择：
+
+#### 方案 A: Git 同步部署 (推荐) ⭐⭐⭐
+**适用场景**: SSH连接不稳定，或偏好手动控制。
+
+1. **本地推送代码**:
+   ```bash
+   ./git_push.sh
+   ```
+
+2. **服务器端拉取**:
+   登录阿里云控制台，在终端执行：
+   ```bash
+   cd /opt/apps/ai-news-bot
+   git pull
+   source venv/bin/activate
+   pip install -r requirements.txt  # 如果有依赖更新
+   python3 bot_wecom.py             # 测试运行
+   ```
+   > 详细指南请参考: [DEPLOY_GIT.md](DEPLOY_GIT.md)
+
+#### 方案 B: 一键自动发布
+**适用场景**: 本地已配置好服务器SSH免密登录。
+
+```bash
+# 提交到GitHub + 自动部署到云服务器
+bash publish.sh "你的提交信息"
+```
+
+### 2. 日志与监控
+
+#### 查看运行日志
 ```bash
 # 实时查看日志
 tail -f /var/log/ai-news.log
 
-# 搜索错误
+# 搜索错误信息
 grep "ERROR\|失败" /var/log/ai-news.log
 ```
 
-### 更新代码
+#### 检查定时任务
 ```bash
-cd /opt/apps/ai-news-bot
-git pull
-source venv/bin/activate
-pip install -r requirements.txt --upgrade
-```
+# 查看当前用户的定时任务
+crontab -l
 
-### 一键发布（推荐）⭐
-```bash
-# 提交到GitHub + 部署到云服务器
-bash publish.sh "你的提交信息"
-
-# 或使用默认提交信息
-bash publish.sh
-```
-
-### 提交并同步到 Git 仓库
-```bash
-# 查看变更
-git status
-
-# 添加并提交（替换提交信息）
-git add .
-git commit -m "chore: update ai-news-bot"
-
-# 推送到远端主分支（如不同分支请替换 main）
-git push origin main
-```
-
-### 修改推送时间
-```bash
 # 编辑定时任务
 crontab -e
 ```
