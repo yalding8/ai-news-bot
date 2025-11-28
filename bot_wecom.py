@@ -232,7 +232,7 @@ def send_daily_news(topics: list = None):
     today_date = datetime.now().strftime("%Y年%m月%d日")
     
     # 消息头部
-    message_parts = [f"📅 **AI新闻日报 - {today_date}**\n"]
+    message_parts = [f"📅 **异乡早咖啡 - {today_date}**\n"]
     
     has_any_content = False
     
@@ -259,7 +259,7 @@ def send_daily_news(topics: list = None):
         message_parts.pop()
 
     # 消息尾部
-    message_parts.append("\n💡 *由 DeepSeek AI 驱动 • 实时聚合全球资讯*")
+    message_parts.append("\n💡 *Powered By 异乡有你，AI 驱动 • 实时聚合全球国际教育行业资讯*")
 
     final_message = "\n".join(message_parts)
     
