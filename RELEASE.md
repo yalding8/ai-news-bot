@@ -115,14 +115,13 @@ git commit -m "fix bug"
 
 ```
 /opt/apps/ai-news-bot/
-├── code/                    # 源代码目录
-│   ├── bot_wecom.py        # 主程序
-│   ├── news_fetcher.py     # 新闻获取模块
-│   ├── ai_summarizer.py    # AI总结模块
-│   └── config.py           # 配置文件
-├── venv/                    # Python虚拟环境
-├── logs/                    # 日志目录
-└── .env                     # 环境变量配置
+├── bot_wecom.py        # 主程序
+├── news_fetcher.py     # 新闻获取模块
+├── ai_summarizer.py    # AI总结模块
+├── config.py           # 配置文件
+├── venv/               # Python虚拟环境
+├── logs/               # 日志目录（自建可选）
+└── .env                # 环境变量配置
 
 /opt/backups/ai-news-bot/   # 备份目录
 └── backup_YYYYMMDD_HHMMSS/ # 按时间戳备份
@@ -135,12 +134,12 @@ git commit -m "fix bug"
 ssh root@157.245.51.54 'crontab -l'
 
 # 输出示例
-0 9 * * * cd /opt/apps/ai-news-bot/code && /opt/apps/ai-news-bot/venv/bin/python3 bot_wecom.py >> /var/log/ai-news.log 2>&1
+0 9 * * * cd /opt/apps/ai-news-bot && /opt/apps/ai-news-bot/venv/bin/python3 bot_wecom.py >> /var/log/ai-news.log 2>&1
 ```
 
 **说明**：
 - 时间：每天早上 9:00（北京时间）
-- 工作目录：`/opt/apps/ai-news-bot/code`
+- 工作目录：`/opt/apps/ai-news-bot`
 - Python解释器：虚拟环境中的python3
 - 日志输出：`/var/log/ai-news.log`
 
@@ -191,7 +190,7 @@ ssh root@157.245.51.54 'crontab -l'
 
 4. 手动执行测试：
    ```bash
-   ssh root@157.245.51.54 'cd /opt/apps/ai-news-bot/code && /opt/apps/ai-news-bot/venv/bin/python3 bot_wecom.py'
+   ssh root@157.245.51.54 'cd /opt/apps/ai-news-bot && /opt/apps/ai-news-bot/venv/bin/python3 bot_wecom.py'
    ```
 
 ### 问题3: Git推送失败

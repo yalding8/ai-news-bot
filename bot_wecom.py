@@ -10,6 +10,7 @@ from datetime import datetime
 from requests.adapters import HTTPAdapter
 from urllib3.util import Retry
 import concurrent.futures
+import threading
 
 from config import (
     WECOM_WEBHOOK_URLS, 
@@ -118,7 +119,7 @@ def send_wecom_message(content: str, msgtype: str = "text") -> bool:
     return all_success
 
 
-def process_topic_news(topic_key: str) -> dict:
+def process_topic_news(topic_key: str, shared_seen_titles=None, lock=None) -> dict:
     """
     处理单个主题的新闻：获取、过滤、总结
 
@@ -162,6 +163,19 @@ def process_topic_news(topic_key: str) -> dict:
         # 第二步：过滤出未推送过的新闻
         logger.info(f"  └─ 过滤重复新闻...")
         real_news = filter_new_news(topic_key, all_news)
+
+        # 跨主题去重：避免同一条新闻出现在多个主题
+        if shared_seen_titles is not None and lock is not None:
+            filtered = []
+            for news in real_news:
+                title = news.get("title", "")
+                with lock:
+                    if title in shared_seen_titles:
+                        logger.info(f"  └─ 跨主题去重: {title[:50]}...")
+                        continue
+                    shared_seen_titles.add(title)
+                filtered.append(news)
+            real_news = filtered
 
         if not real_news:
             if not all_news:
@@ -213,11 +227,16 @@ def send_daily_news(topics: list = None):
 
     logger.info(f"📰 开始处理每日新闻，主题数量: {len(topics)}")
     
-    # 并行处理所有主题
+    # 并行处理所有主题，跨主题去重
     results = []
+    shared_seen_titles = set()
+    lock = threading.Lock()
+    # 使用 ThreadPoolExecutor，确保共享集合线程安全
     with concurrent.futures.ThreadPoolExecutor(max_workers=min(len(topics), 5)) as executor:
-        future_to_topic = {executor.submit(process_topic_news, topic): topic for topic in topics}
-        
+        future_to_topic = {
+            executor.submit(process_topic_news, topic, shared_seen_titles, lock): topic
+            for topic in topics
+        }
         for future in concurrent.futures.as_completed(future_to_topic):
             try:
                 res = future.result()

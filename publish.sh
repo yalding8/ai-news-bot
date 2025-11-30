@@ -103,7 +103,7 @@ ssh -p $SERVER_PORT $SERVER_USER@$SERVER_IP "crontab -l | grep bot_wecom" && \
     log_warn "✗ 定时任务未配置"
 
 log_info "检查部署文件..."
-ssh -p $SERVER_PORT $SERVER_USER@$SERVER_IP "ls -lh $REMOTE_DIR/code/bot_wecom.py" && \
+ssh -p $SERVER_PORT $SERVER_USER@$SERVER_IP "ls -lh $REMOTE_DIR/bot_wecom.py" && \
     log_info "✓ 程序文件存在" || \
     log_error "✗ 程序文件不存在"
 
@@ -122,6 +122,6 @@ echo "━━━━━━━━━━━━━━━━━━━━━━━━�
 echo "📚 后续操作"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo "• 查看服务器日志: ssh $SERVER_USER@$SERVER_IP 'tail -50 /var/log/ai-news.log'"
-echo "• 手动测试运行: ssh $SERVER_USER@$SERVER_IP 'cd $REMOTE_DIR/code && $REMOTE_DIR/venv/bin/python3 bot_wecom.py'"
+echo "• 手动测试运行: ssh $SERVER_USER@$SERVER_IP 'cd $REMOTE_DIR && $REMOTE_DIR/venv/bin/python3 bot_wecom.py'"
 echo "• 查看定时任务: ssh $SERVER_USER@$SERVER_IP 'crontab -l'"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"

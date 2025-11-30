@@ -25,7 +25,11 @@ NEWSAPI_KEY = os.getenv('NEWSAPI_KEY')
 
 
 # Active Topics
-ACTIVE_TOPICS_ENV = os.getenv('ACTIVE_TOPICS', 'ai,education')
+# 默认仅推送国际教育相关主题；如需扩展可通过 ACTIVE_TOPICS 环境变量覆盖
+ACTIVE_TOPICS_ENV = os.getenv(
+    'ACTIVE_TOPICS',
+    'study_abroad,edu_policy,uni_rankings,edu_market,competitors'
+)
 
 # News Topics Configuration
 NEWS_TOPICS = {
@@ -57,21 +61,28 @@ TOPIC_KEYWORDS = {
         # 中文关键词
         '留学', '出国', '海外留学', '留学申请', '留学中介', '留学服务',
         '美国留学', '英国留学', '澳洲留学', '加拿大留学', '欧洲留学', '新加坡留学', '香港留学',
+        '澳大利亚留学', '新西兰留学',
+        '英国大学', '美国大学', '澳大利亚大学', '新西兰大学', '香港高校', '英美澳港新高校',
         '本科留学', '研究生留学', 'MBA', '博士申请', '预科',
         # 英文关键词
         'study abroad', 'international students', 'overseas education',
         'college admission', 'university application', 'student visa',
         'F-1 visa', 'Tier 4 visa', 'study permit', 'international education',
+        'uk student visa', 'british universities', 'us universities', 'australian universities',
+        'new zealand student visa', 'hong kong university', 'hk visa',
     ],
 
     'edu_policy': [
         # 政策相关
         '留学政策', '签证政策', '移民政策', '工作签证', 'OPT', 'CPT', 'STEM OPT',
         '留学生政策', '国际学生', '入境政策', '移民新规', '签证申请',
+        '英国签证', '美国签证', '澳大利亚签证', '新西兰签证', '香港签证',
+        '英美澳港新签证', '英美澳港新移民政策',
         # 英文关键词
         'visa policy', 'immigration policy', 'study visa', 'student visa',
         'work permit', 'post-study work', 'graduate visa', 'PSW',
         'education policy', 'international education policy', 'immigration reform',
+        'uk visa', 'us visa', 'australia visa', 'new zealand visa', 'hong kong visa',
     ],
 
     'uni_rankings': [

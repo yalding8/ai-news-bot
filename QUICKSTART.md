@@ -48,7 +48,7 @@ ssh root@157.245.51.54 'tail -50 /var/log/ai-news.log'
 
 ### 手动测试运行
 ```bash
-ssh root@157.245.51.54 'cd /opt/apps/ai-news-bot/code && /opt/apps/ai-news-bot/venv/bin/python3 bot_wecom.py'
+ssh root@157.245.51.54 'cd /opt/apps/ai-news-bot && /opt/apps/ai-news-bot/venv/bin/python3 bot_wecom.py'
 ```
 
 ### 查看定时任务
@@ -58,7 +58,7 @@ ssh root@157.245.51.54 'crontab -l'
 
 ### 检查服务器状态
 ```bash
-ssh root@157.245.51.54 'ls -lh /opt/apps/ai-news-bot/code/'
+ssh root@157.245.51.54 'ls -lh /opt/apps/ai-news-bot/'
 ```
 
 ---

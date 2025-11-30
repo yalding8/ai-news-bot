@@ -155,7 +155,7 @@ deploy-app.sh ai-news-bot git@github.com:yalding8/ai-news-bot.git "0 9 * * *"
 
 **部署过程说明：**
 - 创建目录结构 `/opt/apps/ai-news-bot/`
-- 克隆 Git 仓库到 `code/` 目录
+- 克隆 Git 仓库到应用根目录
 - 创建 Python 虚拟环境在 `venv/` 目录
 - 安装依赖包
 - 创建 `.env` 模板文件
@@ -224,7 +224,7 @@ ls -la /opt/apps/ai-news-bot/.env
 
 ```bash
 # 进入代码目录
-cd /opt/apps/ai-news-bot/code
+cd /opt/apps/ai-news-bot
 
 # 使用虚拟环境运行应用
 /opt/apps/ai-news-bot/venv/bin/python3 bot_wecom.py
@@ -255,7 +255,7 @@ crontab -l
 
 # 应该看到类似以下内容：
 # ai-news-bot - Automated task
-# 0 9 * * * cd /opt/apps/ai-news-bot/code && /opt/apps/ai-news-bot/venv/bin/python3 bot_wecom.py >> /opt/apps/ai-news-bot/logs/app.log 2>&1
+# 0 9 * * * cd /opt/apps/ai-news-bot && /opt/apps/ai-news-bot/venv/bin/python3 bot_wecom.py >> /opt/apps/ai-news-bot/logs/app.log 2>&1
 ```
 
 **验证 cron 服务状态：**
@@ -299,7 +299,7 @@ cron 任务将在每天 9:00 AM 自动执行。你可以：
 crontab -e
 
 # 修改时间为几分钟后（例如当前时间是 14:30，改为 14:35）
-# 35 14 * * * cd /opt/apps/ai-news-bot/code && ...
+# 35 14 * * * cd /opt/apps/ai-news-bot && ...
 
 # 保存并等待执行
 
@@ -323,7 +323,7 @@ crontab -e
 - [ ] **目录结构正确**
   ```bash
   ls -la /opt/apps/ai-news-bot/
-  # 应该看到：code/, venv/, logs/, .env
+  # 应该看到：代码文件、venv/, 可选 logs/, .env
   ```
 
 - [ ] **虚拟环境可用**
@@ -351,7 +351,7 @@ crontab -e
 
 - [ ] **手动执行成功**
   ```bash
-  cd /opt/apps/ai-news-bot/code
+  cd /opt/apps/ai-news-bot
   /opt/apps/ai-news-bot/venv/bin/python3 bot_wecom.py
   # 应该成功发送消息
   ```
@@ -421,7 +421,7 @@ source /opt/apps/ai-news-bot/venv/bin/activate
 pip install --upgrade pip
 
 # 手动安装依赖（查看详细输出）
-pip install -r /opt/apps/ai-news-bot/code/requirements.txt -v
+pip install -r /opt/apps/ai-news-bot/requirements.txt -v
 
 # 如果某个包安装失败，可能需要安装系统依赖
 # 例如：
@@ -452,7 +452,7 @@ apt install -y python3-dev build-essential
 
 3. **查看详细错误日志**
    ```bash
-   cd /opt/apps/ai-news-bot/code
+   cd /opt/apps/ai-news-bot
    /opt/apps/ai-news-bot/venv/bin/python3 bot_wecom.py 2>&1 | tee debug.log
    ```
 
@@ -494,7 +494,7 @@ apt install -y python3-dev build-essential
 4. **手动测试 cron 命令**
    ```bash
    # 复制 crontab 中的命令并手动执行
-   cd /opt/apps/ai-news-bot/code && /opt/apps/ai-news-bot/venv/bin/python3 bot_wecom.py >> /opt/apps/ai-news-bot/logs/app.log 2>&1
+   cd /opt/apps/ai-news-bot && /opt/apps/ai-news-bot/venv/bin/python3 bot_wecom.py >> /opt/apps/ai-news-bot/logs/app.log 2>&1
    
    # 检查是否有错误
    echo $?
@@ -507,7 +507,7 @@ apt install -y python3-dev build-essential
    
    # 在 cron 任务前添加 PATH
    PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
-   0 9 * * * cd /opt/apps/ai-news-bot/code && ...
+   0 9 * * * cd /opt/apps/ai-news-bot && ...
    ```
 
 ### 问题 5: 日志文件未创建
@@ -595,7 +595,7 @@ ssh root@your-digitalocean-ip
 deploy-app.sh ai-news-bot https://github.com/yalding8/ai-news-bot.git "0 9 * * *"
 
 # 或手动更新
-cd /opt/apps/ai-news-bot/code
+cd /opt/apps/ai-news-bot
 git pull
 /opt/apps/ai-news-bot/venv/bin/pip install -r requirements.txt --upgrade
 ```
@@ -623,7 +623,7 @@ grep "$(date +%Y-%m-%d)" /opt/apps/ai-news-bot/logs/app.log
 crontab -e
 
 # 修改时间（例如改为每天 8:00 AM）
-0 8 * * * cd /opt/apps/ai-news-bot/code && ...
+0 8 * * * cd /opt/apps/ai-news-bot && ...
 
 # 或重新运行部署脚本
 deploy-app.sh ai-news-bot https://github.com/yalding8/ai-news-bot.git "0 8 * * *"

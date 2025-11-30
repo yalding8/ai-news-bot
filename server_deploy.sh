@@ -116,7 +116,7 @@ python3 -c "import bot_wecom; import news_fetcher; import config" && \
 
 # 10. 设置定时任务
 log_info "设置定时任务..."
-CRON_CMD="0 9 * * * cd $REMOTE_DIR/code && $REMOTE_DIR/venv/bin/python3 bot_wecom.py >> /var/log/ai-news.log 2>&1"
+CRON_CMD="0 9 * * * cd $REMOTE_DIR && $REMOTE_DIR/venv/bin/python3 bot_wecom.py >> /var/log/ai-news.log 2>&1"
 
 # 检查定时任务是否已存在
 if ! crontab -l 2>/dev/null | grep -q "bot_wecom.py"; then
