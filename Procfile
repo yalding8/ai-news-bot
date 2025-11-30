@@ -1,1 +1,1 @@
-worker: python bot_deepseek.py
+worker: python bot_wecom.py

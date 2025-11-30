@@ -17,7 +17,7 @@ echo "📤 推送到远程仓库..."
 git push origin main
 
 echo "✅ 代码已推送到GitHub！"
-echo "现在请在阿里云控制台执行以下命令进行部署："
+echo "现在请在服务器终端执行以下命令进行部署（DigitalOcean 示例）："
 echo ""
 echo "cd /opt/apps/ai-news-bot"
 echo "git pull"

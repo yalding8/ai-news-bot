@@ -2,7 +2,7 @@
 
 基于DeepSeek AI的智能新闻推送系统，专注于为团队提供高质量的每日新闻摘要。
 
-🚀 **已验证**: DigitalOcean服务器 + 企业微信推送 ✅
+🚀 **已验证**: DigitalOcean 服务器 + 企业微信推送 ✅
 
 > **开发者必读**：代码更新请查看 [📦 发布流程规范](RELEASE.md) | [🚀 快速开始](QUICKSTART.md)
 
@@ -20,87 +20,44 @@
 
 ---
 
-## 🚀 快速部署
+## 🚀 快速部署（DigitalOcean / 任意 Ubuntu 服务器）
 
-### 方案A: 阿里云服务器部署 (推荐) ⭐⭐⭐⭐⭐
+### 1) 准备环境
+- Ubuntu 22.04（2C2G 即可，DigitalOcean Droplet 已验证）
+- 安装依赖：
+  ```bash
+  apt update && apt upgrade -y
+  apt install -y python3 python3-pip python3-venv git
+  ```
 
-**适合**: 24小时稳定运行、学习Linux运维
-
-#### 1. 购买服务器
-- 访问 [阿里云轻量应用服务器](https://www.aliyun.com/product/swas)
-- 配置：2核2GB，Ubuntu 22.04 LTS，¥24/月
-
-#### 2. 部署代码
+### 2) 获取代码并安装
 ```bash
-# 连接服务器
-ssh root@你的服务器IP
-
-# 安装环境
-apt update && apt upgrade -y
-apt install python3 python3-pip git python3-venv -y
-
-# 克隆项目
-cd /opt/apps
 git clone https://github.com/yalding8/ai-news-bot.git
 cd ai-news-bot
-
-# 创建虚拟环境
 python3 -m venv venv
 source venv/bin/activate
-
-# 安装依赖
-pip install -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple
+pip install -r requirements.txt
 ```
 
-#### 3. 配置环境变量
+### 3) 配置环境变量
 ```bash
-# 创建配置文件
-cat > .env << 'EOF'
-DEEPSEEK_API_KEY=sk-你的DeepSeek_API_Key
-WECOM_WEBHOOK_URL=https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=你的key
-TIANAPI_KEY=你的天行数据API_Key
-EOF
+cp .env.example .env
+nano .env  # 填入 DeepSeek、企业微信 Webhook，可选天行/NewsAPI
 ```
 
-#### 4. 测试运行
+### 4) 测试运行
 ```bash
 python3 bot_wecom.py
-# 应该看到: ✅ 消息发送成功
+# 看到「✅ 消息发送成功」即完成
 ```
 
-#### 5. 设置定时任务
+### 5) 定时任务（示例：每天 9 点）
 ```bash
-# 设置时区
-timedatectl set-timezone Asia/Shanghai
-
-# 添加定时任务（每天早上9点）
 echo "0 9 * * * cd /opt/apps/ai-news-bot && /opt/apps/ai-news-bot/venv/bin/python3 bot_wecom.py >> /var/log/ai-news.log 2>&1" | crontab -
-
-# 验证
 crontab -l
 ```
 
-**✅ 部署完成！** 明天早上9点检查企业微信群是否收到推送。
-
----
-
-### 方案B: 本地macOS运行 (推荐测试) ⭐⭐⭐
-
-```bash
-# 1. 克隆项目
-git clone https://github.com/yalding8/ai-news-bot.git
-cd ai-news-bot
-
-# 2. 安装依赖
-pip3 install -r requirements.txt
-
-# 3. 配置环境变量
-cp .env.example .env
-nano .env  # 填入你的配置
-
-# 4. 测试运行
-python3 bot_wecom.py
-```
+> 更详细的发布/回滚流程见 `DEPLOY.md`、`RELEASE.md`，架构解读见 `docs/ARCHITECTURE.md`。
 
 ---
 
@@ -146,12 +103,13 @@ ai-news-bot/
 ├── ai_summarizer.py      # AI总结与翻译模块
 ├── config.py             # 配置文件
 ├── requirements.txt      # Python依赖
-├── .env.example         # 环境变量模板
-├── README.md            # 项目说明
-└── docs/                # 详细文档
-    ├── DEPLOY_ALIYUN.md    # 阿里云部署指南
-    ├── WECOM_GUIDE.md      # 企业微信配置指南
-    └── SCHEDULE_GUIDE.md   # 定时任务配置指南
+├── .env.example          # 环境变量模板
+├── README.md             # 项目说明
+└── docs/                 # 详细文档
+    ├── ARCHITECTURE.md      # 架构与功能总览
+    ├── WECOM_GUIDE.md        # 企业微信配置指南
+    ├── SCHEDULE_GUIDE.md     # 定时任务配置指南
+    └── MIGRATE_TO_DIGITALOCEAN.md # 迁移/部署参考
 ```
 
 ---
@@ -171,7 +129,7 @@ ai-news-bot/
    ```
 
 2. **服务器端拉取**:
-   登录阿里云控制台，在终端执行：
+   登录服务器终端执行：
    ```bash
    cd /opt/apps/ai-news-bot
    git pull
@@ -248,8 +206,8 @@ curl -X POST 你的Webhook_URL \
 - **每月成本**: 约¥0.6/月
 
 ### 服务器成本
-- **阿里云2核2GB**: ¥24-30/月
-- **总成本**: ¥25-31/月
+- **DigitalOcean 2核2GB**: 约 ¥28-35/月
+- **总成本**: 约 ¥29-36/月
 
 ---
 
@@ -265,7 +223,8 @@ curl -X POST 你的Webhook_URL \
 
 ## 📚 详细文档
 
-- [阿里云部署指南](docs/DEPLOY_ALIYUN.md)
+- [架构与功能总览](docs/ARCHITECTURE.md)
+- [部署与发布指南](DEPLOY.md)
 - [企业微信配置指南](docs/WECOM_GUIDE.md)
 - [定时任务配置指南](docs/SCHEDULE_GUIDE.md)
 
@@ -289,5 +248,5 @@ MIT License
 
 ---
 
-**最后更新**: 2025-11-23
-**部署状态**: ✅ 阿里云服务器运行中
+**最后更新**: 2025-12-XX
+**部署状态**: ✅ DigitalOcean 服务器运行中

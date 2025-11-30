@@ -1,6 +1,6 @@
-# 🚀 一键部署到阿里云服务器
+# 🚀 一键部署到 DigitalOcean / 任意 Ubuntu 服务器
 
-本文档介绍如何使用本项目的一键部署脚本，将 AI News Bot 快速部署到阿里云轻量应用服务器。
+本文档介绍如何使用项目自带的一键部署脚本，将 AI News Bot 快速部署到 DigitalOcean（或任意 Linux 服务器）。
 
 ## 📋 前置要求
 
@@ -10,7 +10,7 @@
 - 可以通过 SSH 连接到服务器
 
 ### 服务器环境
-- 阿里云轻量应用服务器（或其他云服务器）
+- DigitalOcean Droplet（或其他云服务器）
 - Ubuntu 20.04+ 或 CentOS 7+
 - 已安装 Python 3.8+
 - 已安装 `git`、`python3-venv`、`pip`
@@ -222,7 +222,6 @@ killall -9 python3
 ```
 /opt/apps/ai-news-bot/          # 主程序目录
 ├── bot_wecom.py                # 企业微信推送脚本
-├── bot_email.py                # 邮件推送脚本
 ├── news_fetcher.py             # 新闻获取模块
 ├── config.py                   # 配置模块
 ├── requirements.txt            # 依赖列表

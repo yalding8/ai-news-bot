@@ -117,7 +117,7 @@ if ssh -p $SERVER_PORT \
 else
     log_error "✗ 无法连接到服务器"
     log_info "请检查："
-    log_info "  1. 阿里云安全组是否开放22端口"
+    log_info "  1. 云服务器防火墙/安全组是否开放22端口"
     log_info "  2. 服务器IP: $SERVER_IP"
     log_info "  3. SSH端口: $SERVER_PORT"
     log_info "  4. 用户名: $SERVER_USER"

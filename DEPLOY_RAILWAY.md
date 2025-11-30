@@ -104,12 +104,7 @@ DEEPSEEK_API_KEY = sk-192e98a7652b4a829754a3e740f3f0c2
 WECOM_WEBHOOK_URL = https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=ad335a27-91dd-4fca-b73e-e1d5b4b11f03
 ```
 
-**可选的环境变量** (如果使用Telegram):
-
-```
-TELEGRAM_TOKEN = 你的Telegram_Bot_Token
-CHAT_ID = 你的Chat_ID
-```
+> 当前版本仅保留企业微信推送；Telegram 变量已停用，可忽略。
 
 #### 添加方式:
 
@@ -398,7 +393,7 @@ A: 在Railway的Logs标签中,可以查看所有历史日志。
 
 ### Q: 支持其他推送方式吗?
 
-A: 支持。可以配置Telegram、邮件等多种推送方式。
+A: 当前版本仅支持企业微信推送，其余通道已停用。
 
 ### Q: 代码会泄露吗?
 
