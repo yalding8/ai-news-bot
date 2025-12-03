@@ -375,7 +375,31 @@ class NewsFetcher:
         def fetch_single_feed(feed_url):
             try:
                 logger.info(f"  └─ [并行] 从RSS获取: {feed_url[:50]}...")
-                feed = feedparser.parse(feed_url)
+                
+                # 使用requests获取内容，带上User-Agent以绕过反爬
+                headers = {
+                    'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                    'Accept': 'application/rss+xml, application/xml, text/xml, */*'
+                }
+                
+                try:
+                    response = self.session.get(feed_url, headers=headers, timeout=15)
+                    response.raise_for_status()
+                    content = response.content
+                except Exception as req_err:
+                    logger.warning(f"⚠️ RSS请求失败 {feed_url}: {req_err}，尝试直接解析...")
+                    # 如果请求失败，尝试直接用feedparser解析（作为后备）
+                    content = None
+
+                if content:
+                    feed = feedparser.parse(content)
+                else:
+                    feed = feedparser.parse(feed_url)
+
+                if feed.bozo and not feed.entries:
+                    logger.warning(f"⚠️ RSS解析警告 {feed_url}: {feed.bozo_exception}")
+                    return []
+
                 feed_news = []
                 for entry in feed.entries[:num]:
                     # 提取新闻信息
@@ -387,14 +411,19 @@ class NewsFetcher:
                         'time': entry.get('published', entry.get('updated', ''))
                     }
                     feed_news.append(news_item)
-                logger.info(f"✅ RSS获取{len(feed_news)}条新闻 ({feed_url[:30]}...)")
+                
+                if feed_news:
+                    logger.info(f"✅ RSS获取{len(feed_news)}条新闻 ({feed_url[:30]}...)")
+                else:
+                    logger.info(f"⚠️ RSS无内容 ({feed_url[:30]}...)")
+                    
                 return feed_news
             except Exception as e:
                 logger.error(f"❌ RSS解析失败 {feed_url}: {e}")
                 return []
 
         # 并行获取所有RSS源
-        with concurrent.futures.ThreadPoolExecutor(max_workers=min(len(feeds), 5)) as executor:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=min(len(feeds), 8)) as executor:
             future_to_url = {executor.submit(fetch_single_feed, url): url for url in feeds}
             for future in concurrent.futures.as_completed(future_to_url):
                 try:
