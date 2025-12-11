@@ -230,19 +230,24 @@ def send_daily_news(topics: list = None):
     
     for res in results:
         if not res.get("success"):
-            message_parts.append(f"## ❌ {NEWS_TOPICS.get(res.get('topic_key', ''), {}).get('name', '未知主题')}")
-            message_parts.append(f"⚠️ 获取失败: {res.get('error')}\n")
+            # 错误信息只在debug日志中显示，不在周报中占位
+            logger.warning(f"⚠️ {res.get('topic_name')} 获取失败: {res.get('error')}")
             continue
+
+        # 如果没有新闻链接，且内容包含"暂无新内容"，则直接跳过该板块
+        if not res.get("news_links"):
+            logger.info(f"  └─ {res.get('topic_name')} 无新内容，跳过展示")
+            continue
+
+        has_any_content = True
 
         # 添加主题标题
         message_parts.append(f"## {res['emoji']} {res['topic_name']}")
         message_parts.append(f"{res['content']}\n")
         
-        # 添加链接（如果有）
-        if res.get("news_links"):
-            has_any_content = True
-            links_text = "\n".join([f"• [{n['title']}]({n['url']})" for n in res['news_links']])
-            message_parts.append(f"**🔗 精选来源**:\n{links_text}\n")
+        # 添加链接
+        links_text = "\n".join([f"• [{n['title']}]({n['url']})" for n in res['news_links']])
+        message_parts.append(f"**🔗 精选来源**:\n{links_text}\n")
         
         message_parts.append("---")  # 分隔线
 
