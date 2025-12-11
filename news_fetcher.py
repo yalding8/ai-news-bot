@@ -50,8 +50,8 @@ class NewsFetcher:
             'study_abroad': '/guonei/index',  # 留学资讯使用国内新闻+关键词
             'edu_policy': '/guonei/index',    # 教育政策使用国内新闻+关键词
             'uni_rankings': '/guonei/index',  # 院校排名使用国内新闻+关键词
-            'edu_market': '/guonei/index',    # 教育市场使用国内新闻+关键词
-            'competitors': '/guonei/index',   # 竞品动态使用国内新闻+关键词
+            'market_data': '/guonei/index',    # 市场数据使用国内新闻+关键词
+            'industry_news': '/guonei/index',   # 行业动态使用国内新闻+关键词
 
             # 原有主题
             'education': '/guonei/index',  # 教育新闻使用国内新闻+关键词
@@ -106,6 +106,7 @@ class NewsFetcher:
                 'https://thepienews.com/feed/',              # The PIE News（留学行业权威）
                 'https://www.studyinternational.com/feed/',  # Study International
                 'https://www.topuniversities.com/rss',       # QS 留学资讯
+                'https://www.insidehighered.com/rss.xml',    # Inside Higher Ed（新增）
                 # 官方机构
                 'https://www.nafsa.org/rss.xml',             # NAFSA（美国国际教育者协会）
                 # 中文留学媒体
@@ -119,6 +120,7 @@ class NewsFetcher:
                 'https://www.nafsa.org/rss.xml',             # NAFSA（美国国际教育）
                 'https://thepienews.com/feed/',              # The PIE News（政策报道）
                 'https://www.studyinternational.com/feed/',  # Study International
+                'https://www.insidehighered.com/rss.xml',    # Inside Higher Ed（政策）
                 'https://www.jiemodui.com/rss.xml',          # 芥末堆（中国教育政策）
             ],
 
@@ -129,7 +131,7 @@ class NewsFetcher:
                 'https://www.universityworldnews.com/rss.php', # University World News
             ],
 
-            'edu_market': [
+            'market_data': [
                 # 市场数据和分析
                 'https://monitor.icef.com/feed/',            # ICEF Monitor（留学市场数据）
                 'https://thepienews.com/feed/',              # The PIE News
@@ -138,8 +140,11 @@ class NewsFetcher:
                 'https://www.edsurge.com/news.rss',          # EdSurge
             ],
 
-            'competitors': [
+            'industry_news': [
                 # 竞品和行业动态
+                'https://rsshub.fediverse.observer/duozhi/home',    # 多知网 (RSSHub)
+                'https://rsshub.fediverse.observer/jingmeiti/latest', # 鲸媒体 (RSSHub)
+                # 'https://rsshub.fediverse.observer/lanjinger/news/education', # 蓝鲸教育 (RSSHub-备选)
                 'https://www.jiemodui.com/rss.xml',          # 芥末堆
                 'https://www.heibandongcha.com/feed',        # 黑板洞察
                 'https://www.36kr.com/feed',                 # 36氪（融资并购）

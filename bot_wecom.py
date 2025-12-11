@@ -119,100 +119,71 @@ def send_wecom_message(content: str, msgtype: str = "text") -> bool:
     return all_success
 
 
-def process_topic_news(topic_key: str, shared_seen_titles=None, lock=None) -> dict:
+def process_topic_news(topic_key: str) -> Dict:
     """
-    处理单个主题的新闻：获取、过滤、总结
-
-    Args:
-        topic_key: 新闻主题关键词
-
-    Returns:
-        dict: 包含处理结果的字典
-            {
-                "success": bool,
-                "topic_key": str,
-                "topic_name": str,
-                "emoji": str,
-                "content": str,  # AI总结内容
-                "news_links": list, # 新闻链接列表
-                "has_news": bool, # 是否有新内容
-                "error": str # 错误信息（如果有）
-            }
+    处理单个主题的新闻（获取 -> 总结 -> 返回结构化数据）
     """
-    topic_info = NEWS_TOPICS.get(topic_key)
-    if not topic_info:
-        return {"success": False, "error": f"未知主题: {topic_key}"}
-
-    logger.info(f"📡 正在获取{topic_info['name']}...")
-    result = {
-        "success": True,
-        "topic_key": topic_key,
-        "topic_name": topic_info['name'],
-        "emoji": topic_info['emoji'],
-        "has_news": False,
-        "content": "",
-        "news_links": []
-    }
-
+    topic_cfg = NEWS_TOPICS.get(topic_key)
+    if not topic_cfg:
+        return {"success": False, "error": f"未找到主题配置: {topic_key}"}
+    
+    logger.info(f"🚀 开始处理主题: {topic_cfg['name']}")
+    
     try:
-        # 第一步：获取真实新闻
+        # 1. 获取新闻
         logger.info(f"  └─ 从所有新闻源获取真实新闻（API + RSS）...")
         keywords = TOPIC_KEYWORDS.get(topic_key, [topic_key])
         all_news = news_fetcher.fetch_news(topic_key, keywords, num=15)
         
-        # 第二步：过滤出未推送过的新闻
+        # 2. 过滤
         logger.info(f"  └─ 过滤重复新闻...")
         real_news = filter_new_news(topic_key, all_news)
-
-        # 跨主题去重：避免同一条新闻出现在多个主题
-        if shared_seen_titles is not None and lock is not None:
-            filtered = []
-            for news in real_news:
-                title = news.get("title", "")
-                with lock:
-                    if title in shared_seen_titles:
-                        logger.info(f"  └─ 跨主题去重: {title[:50]}...")
-                        continue
-                    shared_seen_titles.add(title)
-                filtered.append(news)
-            real_news = filtered
 
         if not real_news:
             if not all_news:
                 logger.warning(f"  └─ 未获取到真实新闻")
-                result["content"] = "⚠️ 暂时无法获取实时新闻，可能API配额耗尽或网络问题。"
+                return {
+                    "success": True,
+                    "topic_key": topic_key,
+                    "topic_name": topic_cfg['name'],
+                    "emoji": topic_cfg['emoji'],
+                    "content": "⚠️ 暂时无法获取实时新闻，可能API配额耗尽或网络问题。",
+                    "news_links": []
+                }
             else:
-                logger.info(f"  └─ 今日{topic_info['name']}暂无新内容")
-                result["content"] = "✅ 今日暂无新内容（已自动过滤重复资讯）"
-            return result
+                logger.info(f"  └─ 今日{topic_cfg['name']}暂无新内容")
+                return {
+                    "success": True,
+                    "topic_key": topic_key,
+                    "topic_name": topic_cfg['name'],
+                    "emoji": topic_cfg['emoji'],
+                    "content": "✅ 今日暂无新内容（已自动过滤重复资讯）",
+                    "news_links": []
+                }
 
-        result["has_news"] = True
-        
-        # 第三步：格式化真实新闻为文本
-        news_text = news_fetcher.format_news_for_ai(real_news)
         logger.info(f"  └─ 获取到 {len(real_news)} 条真实新闻")
+        news_text = news_fetcher.format_news_for_ai(real_news)
 
-        # 第四步：让AI总结
+        # 3. AI 总结
         ai_summary = ai_summarizer.summarize_news(topic_key, real_news, news_text)
-        result["content"] = ai_summary
-        logger.info(f"✅ {topic_info['name']} 总结完成")
+        logger.info(f"✅ {topic_cfg['name']} 总结完成")
         
-        # 第五步：标记新闻为已推送
+        # 4. 标记新闻为已推送
         mark_news_as_sent(topic_key, real_news)
 
-        # 第六步：收集链接
-        result["news_links"] = [
-            {"title": news['title'], "url": news['url']}
-            for news in real_news[:3]  # 只保留前3条链接
-        ]
-
-        return result
+        # 5. 构造返回结果
+        return {
+            "success": True,
+            "topic_key": topic_key,
+            "topic_name": topic_cfg['name'],
+            "emoji": topic_cfg['emoji'],
+            "content": ai_summary,
+            "news_links": [{"title": n['title'], "url": n['url']} for n in real_news[:3]]
+        }
 
     except Exception as e:
-        logger.error(f"❌ 获取{topic_info['name']}时出错: {e}")
-        result["success"] = False
-        result["error"] = str(e)
-        return result
+        logger.error(f"❌ 处理主题 {topic_key} 失败: {e}")
+        return {"success": False, "error": str(e), "topic_key": topic_key}
 
 
 def send_daily_news(topics: list = None):
@@ -227,14 +198,15 @@ def send_daily_news(topics: list = None):
 
     logger.info(f"📰 开始处理每日新闻，主题数量: {len(topics)}")
     
-    # 并行处理所有主题，跨主题去重
+    # 并行处理所有主题（移除跨主题去重，允许重要新闻多角度曝光）
     results = []
-    shared_seen_titles = set()
-    lock = threading.Lock()
-    # 使用 ThreadPoolExecutor，确保共享集合线程安全
+    # shared_seen_titles = set()
+    # lock = threading.Lock()
+    
+    # 使用 ThreadPoolExecutor
     with concurrent.futures.ThreadPoolExecutor(max_workers=min(len(topics), 5)) as executor:
         future_to_topic = {
-            executor.submit(process_topic_news, topic, shared_seen_titles, lock): topic
+            executor.submit(process_topic_news, topic): topic
             for topic in topics
         }
         for future in concurrent.futures.as_completed(future_to_topic):
