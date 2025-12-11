@@ -57,8 +57,10 @@ TOPIC_KEYWORDS = {
     'startup': ['创业', '融资', '风投', 'VC', '投资'],
 
     'study_abroad': [
-        '留学', '出国', '海外留学', '留学申请', '留学中介', '留学服务',
-        'study abroad', 'international students', 'overseas education'
+        '留学', '出国', '海外留学', '留学申请', '留学中介',        # 英文关键词
+        'study abroad', 'international students', 'overseas education',
+        'acceptance rate', 'waitlist', 'rejection', 'offer', 'deadline', # 新增招生动态词
+        'released', 'decision', 'application portal', # 新增招生动态词
     ],
     
     'market_data': [
