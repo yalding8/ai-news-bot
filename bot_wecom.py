@@ -253,7 +253,7 @@ def send_daily_news(topics: list = None):
     # 广告区域
     message_parts.append("---")
     message_parts.append("\n🏠 **异乡好居** - 留学生海外的家 [#小程序://异乡好居/vvS67rZGtrvbQIn]")
-    message_parts.append("💰 **异乡缴费** - 比一比更生省钱 [#小程序://异乡缴费/8d32ABZvjBHh1vd]\n")
+    message_parts.append("💰 **异乡缴费** - 比一比更省钱 [#小程序://异乡缴费/8d32ABZvjBHh1vd]\n")
 
     # 消息尾部
     message_parts.append("💡 *Powered By 异乡有你，AI 驱动 • 实时聚合全球国际教育行业资讯*")
