@@ -108,8 +108,8 @@ python3 bot_wecom.py
 # 编辑 crontab
 crontab -e
 
-# 添加如下行 (注意服务器时区，若是UTC需设为 01:00)
-0 1 * * * cd /opt/apps/ai-news-bot && /opt/apps/ai-news-bot/venv/bin/python3 bot_wecom.py >> /var/log/ai-news.log 2>&1
+# 添加如下行 (服务器已设置为 CST/北京时间)
+0 9 * * * cd /opt/apps/ai-news-bot && /opt/apps/ai-news-bot/venv/bin/python3 bot_wecom.py >> /var/log/ai-news.log 2>&1
 ```
 
 ## 📂 目录结构
