@@ -22,64 +22,112 @@
 
 ## 🚀 快速部署（DigitalOcean / 任意 Ubuntu 服务器）
 
-### 1) 准备环境
-- Ubuntu 22.04（2C2G 即可，DigitalOcean Droplet 已验证）
-- 安装依赖：
-  ```bash
-  apt update && apt upgrade -y
-  apt install -y python3 python3-pip python3-venv git
-  ```
+### 🤖 异乡早咖啡 (AI News Bot)
 
-### 2) 获取代码并安装
+> **Powered By 异乡有你，AI 驱动 • 实时聚合全球国际教育行业资讯**
+
+这是一个基于 Python 的自动化新闻聚合机器人，专为国际教育从业者打造。它每天定时从全球各大权威媒体抓取最新资讯，利用 DeepSeek V3 大模型进行智能摘要，并通过企业微信（WeCom）推送“异乡早咖啡”日报。
+
+## ✨ 主要功能
+
+*   **多源聚合**: 整合了 **RSS 订阅** (Inside Higher Ed, The PIE News, 芥末堆, 多知网, 鲸媒体等) 和 **新闻 API** (TianAPI, NewsAPI)。
+*   **智能摘要**: 使用 DeepSeek LLM 对长篇新闻进行精准总结，提取关键信息。
+*   **四大板块**:
+    1.  **📊 数据趋势 (Market Data)**: 留学市场宏观数据、行业报告。
+    2.  **🏢 行业动态 (Industry News)**: 教育机构融资、并购、战略合作（含竞品动态）。
+    3.  **📜 教育政策 (Edu Policy)**: 各国签证、移民及教育新政。
+    4.  **✈️ 留学资讯 (Study Abroad)**: 院校动态、招生信息等。
+*   **智能去重**: 自动过滤重复内容，同时允许重要新闻在不同维度（如既是政策又是市场影响）进行展示。
+*   **美观推送**: 生成格式优美的 Markdown 日报，包含 Emoji 图标、精选来源链接及底部小程序快捷入口。
+
+## 🛠 技术栈
+
+*   **语言**: Python 3.10+
+*   **AI 模型**: DeepSeek V3
+*   **数据源**:
+    *   `feedparser`: 处理 RSS/Atom 订阅源
+    *   `requests`: 处理 API 请求
+    *   **RSSHub**: 辅助抓取多知网、鲸媒体等无原生 RSS 的站点
+*   **通知渠道**: 企业微信 Webhook (Markdown 格式)
+*   **部署**: DigitalOcean (Ubuntu) + Crontab 定时任务
+
+## 🚀 快速开始
+
+### 1. 环境准备
+
 ```bash
+# 克隆仓库
 git clone https://github.com/yalding8/ai-news-bot.git
 cd ai-news-bot
+
+# 创建并激活虚拟环境
 python3 -m venv venv
 source venv/bin/activate
+
+# 安装依赖
 pip install -r requirements.txt
 ```
 
-### 3) 配置环境变量
-```bash
-cp .env.example .env
-nano .env  # 填入 DeepSeek、企业微信 Webhook，可选天行/NewsAPI
+### 2. 配置环境变量
+
+复制 `.env.example` 为 `.env` 并填入以下信息：
+
+```ini
+# DeepSeek API Key
+DEEPSEEK_API_KEY=sk-xxxxxxxxxxxxxxxx
+
+# 企业微信 Webhook (支持多个，逗号分隔)
+WECOM_WEBHOOK_URL=https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=xxxx
+
+# 可选：天行数据/NewsAPI Key
+TIANAPI_KEY=xxx
+NEWSAPI_KEY=xxx
+
+# 激活的主题板块
+ACTIVE_TOPICS=study_abroad,market_data,industry_news,edu_policy
 ```
 
-### 4) 测试运行
+### 3. 运行测试
+
 ```bash
+# 手动运行一次日报生成
 python3 bot_wecom.py
-# 看到「✅ 消息发送成功」即完成
 ```
 
-### 5) 定时任务（示例：每天 9 点）
+## 📅 自动化部署
+
+本项目通过 `crontab` 在服务器上每日定时运行。
+
+**部署步骤**:
+1.  将代码推送到 GitHub。
+2.  在服务器拉取最新代码。
+3.  确保 `.env` 配置正确。
+4.  设置 Cron 任务（北京时间每天早 9:00）：
+
 ```bash
-echo "0 9 * * * cd /opt/apps/ai-news-bot && /opt/apps/ai-news-bot/venv/bin/python3 bot_wecom.py >> /var/log/ai-news.log 2>&1" | crontab -
-crontab -l
+# 编辑 crontab
+crontab -e
+
+# 添加如下行 (注意服务器时区，若是UTC需设为 01:00)
+0 1 * * * cd /opt/apps/ai-news-bot && /opt/apps/ai-news-bot/venv/bin/python3 bot_wecom.py >> /var/log/ai-news.log 2>&1
 ```
 
-> 更详细的发布/回滚流程见 `DEPLOY.md`、`RELEASE.md`，架构解读见 `docs/ARCHITECTURE.md`。
+## 📂 目录结构
+
+*   `bot_wecom.py`: 主程序入口，负责流程控制和消息发送。
+*   `news_fetcher.py`: 新闻抓取核心逻辑 (RSS/API)。
+*   `ai_summarizer.py`: AI 摘要生成模块。
+*   `config.py`: 项目配置（主题定义、RSS源列表、关键词）。
+*   `requirements.txt`: Python 依赖。
+
+## 📝 维护指南
+
+*   **添加新源**: 修改 `config.py` 中的 `rss_feeds` 字典。
+*   **调整关键词**: 修改 `config.py` 中的 `TOPIC_KEYWORDS`。
+*   **更新广告**: 修改 `bot_wecom.py` 底部的广告文字和小程序链接。
 
 ---
-
-## ⚙️ 配置说明
-
-### 1. 获取DeepSeek API Key
-1. 访问 https://platform.deepseek.com/
-2. 注册账号并创建API Key
-3. 充值¥10（可用很久）
-
-**成本**: 约¥0.6/月（每天推送1次）
-
-### 2. 获取企业微信Webhook
-1. 企业微信群聊 → 右上角`···` → `群机器人` → `添加机器人`
-2. 设置名称并复制Webhook URL
-
-### 3. 获取天行数据API Key（可选）
-1. 访问 https://www.tianapi.com/
-2. 注册并申请免费API Key
-3. 用于获取真实新闻数据
-
----
+© 2025 异乡好居 | 内部工具
 
 ## 📋 支持的新闻主题
 
