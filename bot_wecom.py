@@ -279,8 +279,8 @@ def send_daily_news(topics: list = None):
 
     # 广告区域
     message_parts.append("---")
-    message_parts.append("\n🏠 **异乡好居** - 全球长租预订平台 [点击查看](https://www.uhomes.com/)")
-    message_parts.append("💰 **异乡缴费** - 留学缴费省心省钱 [点击查看](https://pay.uhomes.com/)\n")
+    message_parts.append("\n🏠 **异乡好居** - 全球长租预订平台 [点击查看](https://uhouzz.cn/a5yvnL80)")
+    message_parts.append("💰 **异乡缴费** - 留学缴费省心省钱 [点击查看](https://uhouzz.cn/ebvn58O0)\n")
 
     # 消息尾部
     message_parts.append("💡 *Powered By 异乡有你，AI 驱动 • 实时聚合全球国际教育行业资讯*")
