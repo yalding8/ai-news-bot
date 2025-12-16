@@ -11,11 +11,12 @@
 ## ✨ 核心特性
 
 - 🤖 **DeepSeek AI驱动** - 智能总结真实新闻，自动翻译英文资讯
-- 📰 **多元化新闻源** - 集成天行数据API + 30+个高质量RSS源（Google AI、OpenAI、量子位、机器之心、极客公园等）
-- ⚖️ **多样性算法** - 智能去重与多样性过滤，防止单一来源霸屏
+- 📰 **多元化新闻源** - 集成天行数据API + 50+个高质量RSS源（Inside Higher Ed、VentureBeat、TechCrunch等）
+- ⚖️ **智能去重系统** - 24小时缓存去重 + 相似度过滤，避免重复推送
+- 🎯 **多样性算法** - 单源最多2条，防止单一来源霸屏
+- 📊 **5维质量评分** - 来源权威性、内容深度、时效性、关键词匹配、独家性
 - 📱 **企业微信推送** - 支持多个群组同时推送，专为团队协作设计
 - ⏰ **自动定时推送** - 支持cron定时任务，24小时自动运行
-- 🚀 **一键发布** - 提供 `publish.sh` 脚本，一键推送到GitHub并部署到云服务器
 - 🎯 **多主题支持** - AI科技、财经、创业、教育等6大主题
 
 ---
@@ -83,8 +84,8 @@ WECOM_WEBHOOK_URL=https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=xxxx
 TIANAPI_KEY=xxx
 NEWSAPI_KEY=xxx
 
-# 激活的主题板块
-ACTIVE_TOPICS=study_abroad,market_data,industry_news,edu_policy
+# 激活的主题板块（可用: ai, finance, startup, education, pbsa, uhomes）
+ACTIVE_TOPICS=education,ai
 ```
 
 ### 3. 运行测试
@@ -133,10 +134,10 @@ crontab -e
 
 | 主题代码 | 名称 | 说明 | RSS源数量 |
 |---------|------|------|----------|
-| `ai` | 🤖 AI科技 | Google AI、OpenAI、量子位、机器之心、极客公园、爱范儿等 | 20+ |
+| `ai` | 🤖 AI科技 | VentureBeat、TechCrunch、The Verge、IT之家、虎嗅等 | 8 |
 | `finance` | 💰 财经新闻 | 金融市场和经济动态 | 3 |
-| `startup` | 🚀 创业投资 | 创业公司和投资动态（含Crunchbase） | 5 |
-| `education` | 🎓 国际教育 | 国际教育行业动态（含EdSurge、Chronicle） | 9 |
+| `startup` | 🚀 创业投资 | 创业公司和投资动态 | 3 |
+| `education` | 🎓 国际教育 | Inside Higher Ed、EdSurge、The PIE News、芥末堆等 | 7 |
 | `pbsa` | 🏠 学生公寓 | PBSA学生公寓行业动态 | 2 |
 | `uhomes` | 🏡 异乡好居 | 异乡好居企业动态 | 2 |
 
@@ -148,16 +149,20 @@ crontab -e
 ai-news-bot/
 ├── bot_wecom.py          # 企业微信推送主程序
 ├── news_fetcher.py       # 新闻获取模块（API + RSS + 多样性过滤）
+├── news_cache.py         # 智能缓存去重系统
 ├── ai_summarizer.py      # AI总结与翻译模块
 ├── config.py             # 配置文件
 ├── requirements.txt      # Python依赖
 ├── .env.example          # 环境变量模板
+├── .news_cache.json      # 新闻缓存数据（自动生成）
 ├── README.md             # 项目说明
+├── OPTIMIZATION_TODO.md  # 优化方案TODO
+├── diagnose_news.py      # 新闻获取诊断脚本
 └── docs/                 # 详细文档
-    ├── ARCHITECTURE.md      # 架构与功能总览
     ├── WECOM_GUIDE.md        # 企业微信配置指南
     ├── SCHEDULE_GUIDE.md     # 定时任务配置指南
-    └── MIGRATE_TO_DIGITALOCEAN.md # 迁移/部署参考
+    ├── EDUCATION_NEWS_FIX.md # 教育新闻修复报告
+    └── AI_NEWS_OPTIMIZATION.md # AI新闻优化报告
 ```
 
 ---
@@ -244,6 +249,34 @@ curl -X POST 你的Webhook_URL \
   -d '{"msgtype":"text","text":{"content":"测试消息"}}'
 ```
 
+### 问题4: 推送内容为空
+**原因**: 主题配置错误或新闻被缓存过滤
+
+**解决**:
+```bash
+# 1. 检查主题配置
+cat .env | grep ACTIVE_TOPICS
+# 应该是: ACTIVE_TOPICS=education,ai
+# 不是: ACTIVE_TOPICS=study_abroad,edu_market,competitors
+
+# 2. 清除缓存
+rm -f .news_cache.json
+
+# 3. 运行诊断脚本
+python3 diagnose_news.py
+
+# 4. 重新测试
+python3 bot_wecom.py
+```
+
+**可用主题**:
+- `ai` - AI科技
+- `finance` - 财经新闻
+- `startup` - 创业投资
+- `education` - 国际教育
+- `pbsa` - 学生公寓
+- `uhomes` - 异乡好居
+
 ---
 
 ## 💰 成本说明
@@ -296,5 +329,22 @@ MIT License
 
 ---
 
-**最后更新**: 2025-12-XX
-**部署状态**: ✅ DigitalOcean 服务器运行中
+**最后更新**: 2025-12-16
+**版本**: v2.1 - 智能去重优化版
+**部署状态**: ✅ 阿里云服务器运行中
+
+---
+
+## 🆕 更新日志
+
+### v2.1 (2025-12-16)
+- ✅ 新增智能缓存去重系统，避免24小时内重复推送
+- ✅ 扩展AI新闻源至8个，增加国际权威媒体
+- ✅ 扩展教育新闻源至7个，覆盖国际教育媒体
+- ✅ 实现多样性过滤，单源最多2条
+- ✅ 新增5维质量评分系统
+- ✅ 添加时间过滤，只推送7天内新闻
+- ✅ 新增诊断脚本，方便故障排查
+
+### v2.0 (2025-11-21)
+- ✅ 初始版本发布
