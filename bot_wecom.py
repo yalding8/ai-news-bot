@@ -17,6 +17,8 @@ from config import (
     WECOM_WEBHOOK_URLS, 
     NEWS_TOPICS, 
     ACTIVE_TOPICS_ENV, 
+    TOPIC_ALIASES,
+    SEND_WHEN_NO_NEW,
     get_logger
 )
 from news_fetcher import NewsFetcher, TOPIC_KEYWORDS
@@ -50,8 +52,12 @@ def parse_active_topics(raw: str) -> list:
     for key in [t.strip() for t in raw.split(',')]:
         if not key:
             continue
-        if key in NEWS_TOPICS:
-            topics.append(key)
+        normalized = TOPIC_ALIASES.get(key, key)
+        if normalized in NEWS_TOPICS:
+            if normalized not in topics:
+                topics.append(normalized)
+            if normalized != key:
+                logger.info(f"🔁 主题别名映射: {key} -> {normalized}")
         else:
             logger.warning(f"⚠️ 忽略未知主题: {key}")
     return topics
@@ -189,88 +195,105 @@ def process_topic_news(topic_key: str) -> Dict:
 
 def send_daily_news(topics: list = None):
     """
-    发送每日新闻汇总（合并为一条消息）
+    发送每日新闻汇总（合并所有主题为一条消息，去重）
 
     Args:
-        topics: 要发送的主题列表
+        topics: 要发送的主题列表（用于获取新闻源，但最终合并展示）
     """
     if topics is None:
         topics = list(NEWS_TOPICS.keys())
 
-    logger.info(f"📰 开始处理每日新闻，主题数量: {len(topics)}")
-    
-    # 并行处理所有主题（移除跨主题去重，允许重要新闻多角度曝光）
-    results = []
-    # shared_seen_titles = set()
-    # lock = threading.Lock()
-    
-    # 使用 ThreadPoolExecutor
+    logger.info(f"📰 开始获取新闻，涉及 {len(topics)} 个主题源")
+
+    # 并行从所有主题获取新闻
+    all_news = []
+    seen_urls = set()
+
     with concurrent.futures.ThreadPoolExecutor(max_workers=min(len(topics), 5)) as executor:
         future_to_topic = {
-            executor.submit(process_topic_news, topic): topic
+            executor.submit(fetch_topic_news_raw, topic): topic
             for topic in topics
         }
         for future in concurrent.futures.as_completed(future_to_topic):
             try:
-                res = future.result()
-                results.append(res)
+                news_list = future.result()
+                # 按URL去重
+                for news in news_list:
+                    if news['url'] not in seen_urls:
+                        seen_urls.add(news['url'])
+                        all_news.append(news)
             except Exception as exc:
-                logger.error(f"❌ 处理异常: {exc}")
+                logger.error(f"❌ 获取新闻异常: {exc}")
 
-    # 按照原始topics顺序排序结果
-    results.sort(key=lambda x: topics.index(x['topic_key']) if x.get('topic_key') in topics else 999)
+    if not all_news:
+        logger.warning("⚠️ 未获取到任何新闻，取消发送日报")
+        return
 
-    # 构造合并消息
+    logger.info(f"📊 合并去重后共 {len(all_news)} 条新闻")
+
+    # 过滤已推送的新闻
+    new_news = filter_new_news('daily_digest', all_news)
+    if not new_news:
+        logger.warning("⚠️ 所有新闻均已推送过，取消发送日报")
+        return
+
+    logger.info(f"📰 筛选出 {len(new_news)} 条未推送新闻")
+
+    # AI总结（取前9条最重要的新闻）
+    top_news = new_news[:9]
+    news_text = news_fetcher.format_news_for_ai(top_news)
+
+    logger.info("🤖 AI正在生成新闻摘要...")
+    ai_summary = ai_summarizer.summarize_daily_news(top_news, news_text)
+
+    # 标记为已推送
+    mark_news_as_sent('daily_digest', top_news)
+
+    # 构造消息
     today_date = datetime.now().strftime("%Y年%m月%d日")
-    
-    # 消息头部
-    message_parts = [f"📅 **异乡早咖啡 - {today_date}**\n"]
-    
-    has_any_content = False
-    
-    for res in results:
-        if not res.get("success"):
-            # 错误信息只在debug日志中显示，不在周报中占位
-            logger.warning(f"⚠️ {res.get('topic_name')} 获取失败: {res.get('error')}")
-            continue
 
-        # 如果没有新闻链接，且内容包含"暂无新内容"，则直接跳过该板块
-        if not res.get("news_links"):
-            logger.info(f"  └─ {res.get('topic_name')} 无新内容，跳过展示")
-            continue
+    message_parts = [
+        f"📅 **异乡早咖啡 - {today_date}**\n",
+        ai_summary,
+        "\n**🔗 精选来源**:"
+    ]
 
-        has_any_content = True
-
-        # 添加主题标题
-        message_parts.append(f"## {res['emoji']} {res['topic_name']}")
-        message_parts.append(f"{res['content']}\n")
-        
-        # 添加链接
-        links_text = "\n".join([f"• [{n['title']}]({n['url']})" for n in res['news_links']])
-        message_parts.append(f"**🔗 精选来源**:\n{links_text}\n")
-        
-        message_parts.append("---")  # 分隔线
-
-    # 移除最后一个分隔线
-    if message_parts[-1] == "---":
-        message_parts.pop()
+    # 添加前5条链接
+    for news in top_news[:5]:
+        message_parts.append(f"• [{news['title'][:40]}...]({news['url']})" if len(news['title']) > 40 else f"• [{news['title']}]({news['url']})")
 
     # 广告区域
-    message_parts.append("---")
-    message_parts.append("\n🏠 **异乡好居** - 留学生海外的家 [#小程序://异乡好居/vvS67rZGtrvbQIn]")
-    message_parts.append("💰 **异乡缴费** - 比一比更省钱 [#小程序://异乡缴费/8d32ABZvjBHh1vd]\n")
-
-    # 消息尾部
-    message_parts.append("💡 *Powered By 异乡有你，AI 驱动 • 实时聚合全球国际教育行业资讯*")
+    message_parts.append("\n---")
+    message_parts.append("🏠 **异乡好居** - 留学生海外的家 [#小程序://异乡好居/vvS67rZGtrvbQIn]")
+    message_parts.append("💰 **异乡缴费** - 比一比更省钱 [#小程序://异乡缴费/8d32ABZvjBHh1vd]")
+    message_parts.append("\n💡 *Powered By 异乡有你，AI驱动 • 实时聚合全球国际教育资讯*")
 
     final_message = "\n".join(message_parts)
-    
+    byte_length = len(final_message.encode('utf-8'))
+    logger.info(f"📊 消息长度: {len(final_message)} 字符, {byte_length} 字节")
+
+    # 企业微信markdown限制4096字节
+    MAX_BYTES = 4000
+    if byte_length > MAX_BYTES:
+        logger.warning(f"⚠️ 消息 {byte_length} 字节超过限制，进行截断")
+        encoded = final_message.encode('utf-8')
+        truncated = encoded[:MAX_BYTES - 100]
+        final_message = truncated.decode('utf-8', errors='ignore') + "\n\n...\n💡 *Powered By 异乡有你*"
+        logger.info(f"📊 截断后: {len(final_message.encode('utf-8'))} 字节")
+
     # 发送消息
-    logger.info("📤 正在发送合并后的新闻日报...")
+    logger.info("📤 正在发送新闻日报...")
     if send_wecom_message(final_message, msgtype="markdown"):
         logger.info("✅ 日报发送成功")
     else:
         logger.error("❌ 日报发送失败")
+
+
+def fetch_topic_news_raw(topic_key: str) -> list:
+    """获取单个主题的原始新闻列表（不做AI总结）"""
+    logger.info(f"  └─ 获取主题: {topic_key}")
+    keywords = TOPIC_KEYWORDS.get(topic_key, [topic_key])
+    return news_fetcher.fetch_news(topic_key, keywords, num=15)
 
 
 def main():

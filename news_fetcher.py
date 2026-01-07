@@ -8,11 +8,12 @@ import requests
 import feedparser
 import logging
 from datetime import datetime
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Any
 from requests.adapters import HTTPAdapter
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 from urllib3.util import Retry
 from dotenv import load_dotenv
-from config import TOPIC_KEYWORDS
+from config import TOPIC_KEYWORDS, NEGATIVE_KEYWORDS
 
 # 加载环境变量
 load_dotenv()
@@ -62,6 +63,14 @@ class NewsFetcher:
         # NewsAPI配置
         self.newsapi_key = os.getenv('NEWSAPI_KEY')
         self.newsapi_base = "https://newsapi.org/v2"
+        
+        # 缓存配置 (Phase 2 Task 2.3)
+        import tempfile
+        self.cache_dir = os.path.join(tempfile.gettempdir(), 'ai_news_cache')
+        if not os.path.exists(self.cache_dir):
+            os.makedirs(self.cache_dir)
+        self.cache_ttl = 3600 # 1小时缓存
+        logger.info(f"🚀 启用文件缓存，目录: {self.cache_dir}")
 
         # RSS订阅源配置（免费、高质量）
         # 为每个主题配置了更精准的RSS源，提高新闻相关性
@@ -80,13 +89,19 @@ class NewsFetcher:
                 'https://hnrss.org/newest?q=AI',          # Hacker News (AI topic)
                 'http://feeds.arstechnica.com/arstechnica/index', # Ars Technica
                 'https://www.wired.com/feed/category/science/latest/rss', # Wired Science
-                'https://ai.googleblog.com/feeds/posts/default', # Google AI Blog（新增）
-                'https://openai.com/blog/rss',            # OpenAI Blog（新增）
-                'https://paperswithcode.com/rss.xml',     # Papers with Code（新增）
-                'https://aiweekly.co/rss',                # AI Weekly（新增）
-                'https://www.geekpark.net/rss',           # 极客公园（新增）
-                'https://www.ifanr.com/feed',             # 爱范儿（新增）
-                'https://www.pingwest.com/feed',          # PingWest品玩（新增）
+                'https://blog.google/technology/ai/rss/', # Google AI Blog (Updated)
+                'https://openai.com/index.xml',            # OpenAI Blog (Updated)
+                'https://paperswithcode.com/rss.xml',     # Papers with Code
+                'https://daily.aiweekly.co/issues.rss',    # AI Weekly (Updated)
+                'https://www.geekpark.net/rss',           # 极客公园
+                'https://www.ifanr.com/feed',             # 爱范儿
+                'https://www.pingwest.com/feed',          # PingWest品玩
+                # 新增 Phase 1 源
+                'https://www.technologyreview.com/feed/topic/artificial-intelligence', # MIT Tech Review AI
+                'https://www.marktechpost.com/feed/',     # MarkTechPost
+                'https://syncedreview.com/feed/',         # Synced (机器之心英文)
+                'https://www.unite.ai/feed/',             # Unite.AI
+                'https://huggingface.co/blog/feed.xml',   # Hugging Face Blog
             ],
             'finance': [
                 'https://www.huxiu.com/rss/0.xml',        # 虎嗅财经
@@ -98,17 +113,19 @@ class NewsFetcher:
                 'https://www.huxiu.com/rss/0.xml',        # 虎嗅创投
                 'https://www.36kr.com/feed',              # 36氪创投
                 'https://hnrss.org/newest?q=startup',     # Hacker News (Startup)
-                'https://news.crunchbase.com/feed/',      # Crunchbase News（新增）
+                'https://news.crunchbase.com/feed/',      # Crunchbase News
             ],
             # 国际教育服务行业专业RSS源
             'study_abroad': [
                 # 留学行业权威媒体
                 'https://thepienews.com/feed/',              # The PIE News（留学行业权威）
                 'https://www.studyinternational.com/feed/',  # Study International
-                'https://www.topuniversities.com/rss',       # QS 留学资讯
-                'https://www.insidehighered.com/rss.xml',    # Inside Higher Ed（新增）
-                # 官方机构
-                'https://www.nafsa.org/rss.xml',             # NAFSA（美国国际教育者协会）
+                'https://www.insidehighered.com/rss.xml',    # Inside Higher Ed
+                'https://www.highereddive.com/feeds/news/',  # Higher Ed Dive（新增-高等教育深度报道）
+                # 新增 Phase 1 源
+                'https://wenr.wes.org/feed',                 # WENR (World Education News)
+                'https://universitybusiness.com/feed/',      # University Business
+                'https://theknowledgereview.com/feed/',      # The Knowledge Review（新增）
                 # 中文留学媒体
                 'https://www.jiemodui.com/rss.xml',          # 芥末堆
                 'https://www.heibandongcha.com/feed',        # 黑板洞察
@@ -117,18 +134,24 @@ class NewsFetcher:
 
             'edu_policy': [
                 # 政策类RSS源
-                'https://www.nafsa.org/rss.xml',             # NAFSA（美国国际教育）
                 'https://thepienews.com/feed/',              # The PIE News（政策报道）
                 'https://www.studyinternational.com/feed/',  # Study International
                 'https://www.insidehighered.com/rss.xml',    # Inside Higher Ed（政策）
+                'https://www.highereddive.com/feeds/news/',  # Higher Ed Dive（政策深度报道）
                 'https://www.jiemodui.com/rss.xml',          # 芥末堆（中国教育政策）
+                # 英国官方（GOV.UK Atom）：按机构订阅，比 search Atom 噪音更少、更稳定
+                'https://www.gov.uk/government/organisations/uk-visas-and-immigration.atom',  # UKVI
+                'https://www.gov.uk/government/organisations/home-office.atom',              # Home Office（移民/签证）
+                'https://www.gov.uk/government/organisations/department-for-education.atom',  # DfE（教育政策）
+                'https://www.gov.uk/government/organisations/office-for-students.atom',       # OfS（高教监管）
             ],
 
             'uni_rankings': [
                 # 排名类RSS源
-                'https://www.topuniversities.com/rss',       # QS World Rankings
                 'https://www.timeshighereducation.com/rss.xml', # Times Higher Education
                 'https://www.universityworldnews.com/rss.php', # University World News
+                'https://www.highereddive.com/feeds/news/',  # Higher Ed Dive
+                'https://theknowledgereview.com/feed/',      # The Knowledge Review
             ],
 
             'market_data': [
@@ -142,15 +165,12 @@ class NewsFetcher:
 
             'industry_news': [
                 # 竞品和行业动态
-                'https://rsshub.fediverse.observer/duozhi/home',    # 多知网 (RSSHub)
-                'https://rsshub.fediverse.observer/jingmeiti/latest', # 鲸媒体 (RSSHub)
-                # 'https://rsshub.fediverse.observer/lanjinger/news/education', # 蓝鲸教育 (RSSHub-备选)
                 'https://www.jiemodui.com/rss.xml',          # 芥末堆
                 'https://www.heibandongcha.com/feed',        # 黑板洞察
                 'https://www.36kr.com/feed',                 # 36氪（融资并购）
                 'https://news.crunchbase.com/feed/',         # Crunchbase News
-                'https://techcrunch.com/category/education/feed/', # TechCrunch教育
-                'https://www.edsurge.com/news.rss',          # EdSurge
+                'https://www.highereddive.com/feeds/news/',  # Higher Ed Dive（行业深度）
+                'https://theknowledgereview.com/feed/',      # The Knowledge Review
             ],
 
             # 原有教育主题（保留，作为综合教育资讯）
@@ -158,12 +178,10 @@ class NewsFetcher:
                 'https://www.jiemodui.com/rss.xml',          # 芥末堆
                 'https://www.heibandongcha.com/feed',        # 黑板洞察
                 'https://www.36kr.com/feed',                 # 36氪教育
-                'https://feeds.feedburner.com/EducationWeek', # Education Week
                 'https://www.insidehighered.com/rss.xml',    # Inside Higher Ed
+                'https://www.highereddive.com/feeds/news/',  # Higher Ed Dive
                 'https://www.timeshighereducation.com/rss.xml', # Times Higher Education
                 'https://www.universityworldnews.com/rss.php', # University World News
-                'https://www.edsurge.com/news.rss',          # EdSurge
-                'https://www.chronicle.com/section/news/6/rss', # Chronicle of Higher Ed
             ],
             'pbsa': [
                 'https://www.36kr.com/feed',              # 36氪房地产科技
@@ -174,6 +192,65 @@ class NewsFetcher:
                 'https://www.huxiu.com/rss/0.xml',        # 虎嗅
             ]
         }
+
+    def _normalize_url(self, url: str) -> str:
+        """规范化URL用于去重：去掉追踪参数、fragment，统一host/scheme并排序query。"""
+        if not url:
+            return ""
+
+        try:
+            parts = urlsplit(url.strip())
+            if not parts.scheme or not parts.netloc:
+                return url.strip()
+
+            scheme = parts.scheme.lower()
+            netloc = parts.netloc.lower()
+
+            # 去掉默认端口
+            if netloc.endswith(":80") and scheme == "http":
+                netloc = netloc[:-3]
+            elif netloc.endswith(":443") and scheme == "https":
+                netloc = netloc[:-4]
+
+            path = parts.path or "/"
+            if path != "/" and path.endswith("/"):
+                path = path[:-1]
+
+            # 过滤常见追踪参数
+            tracking_keys = {
+                "gclid",
+                "fbclid",
+                "igshid",
+                "mc_cid",
+                "mc_eid",
+                "ref",
+                "ref_src",
+                "spm",
+            }
+            filtered_qs = []
+            for key, value in parse_qsl(parts.query, keep_blank_values=True):
+                key_stripped = (key or "").strip()
+                if not key_stripped:
+                    continue
+                key_lower = key_stripped.lower()
+                if key_lower.startswith("utm_") or key_lower in tracking_keys:
+                    continue
+                filtered_qs.append((key_stripped, value))
+            filtered_qs.sort(key=lambda kv: (kv[0].lower(), kv[1]))
+
+            query = urlencode(filtered_qs, doseq=True)
+            return urlunsplit((scheme, netloc, path, query, ""))
+        except Exception:
+            return url.strip()
+
+    def _canonical_id(self, value: str) -> str:
+        """把 guid/id 规范成可比对的去重键（如果像URL则走URL规范化）。"""
+        if not value:
+            return ""
+        raw = str(value).strip()
+        if raw.lower().startswith(("http://", "https://")):
+            return self._normalize_url(raw)
+        return raw
 
     def fetch_tianapi_news(self, topic: str, keyword: str = None, num: int = 5) -> List[Dict]:
         """
@@ -226,6 +303,7 @@ class NewsFetcher:
                         'description': item.get('description', ''),
                         'source': item.get('source', '天行数据'),
                         'url': item.get('url', ''),
+                        'id': item.get('url', ''),
                         'time': item.get('ctime', ''),
                         'picUrl': item.get('picUrl', '')
                     })
@@ -276,6 +354,7 @@ class NewsFetcher:
                         'description': item.get('description', ''),
                         'source': item.get('source', {}).get('name', 'NewsAPI'),
                         'url': item.get('url', ''),
+                        'id': item.get('url', ''),
                         'time': item.get('publishedAt', '')
                     })
                 logger.info(f"✅ NewsAPI获取{len(news_list)}条新闻")
@@ -288,78 +367,175 @@ class NewsFetcher:
             logger.error(f"❌ NewsAPI请求失败: {e}")
             return []
 
+    def calculate_similarity(self, news1: Dict, news2: Dict) -> float:
+        """
+        计算新闻相似度 (Phase 2 Task 2.1)
+        
+        Args:
+            news1: 新闻1
+            news2: 新闻2
+            
+        Returns:
+            float: 相似度 (0-1)
+        """
+        from difflib import SequenceMatcher
+        
+        # 计算标题相似度 (权重 70%)
+        title_sim = SequenceMatcher(None, news1.get('title', ''), news2.get('title', '')).ratio()
+        
+        # 计算描述相似度 (权重 30%)，如果描述很少，降低权重
+        desc1 = news1.get('description', '')
+        desc2 = news2.get('description', '')
+        
+        if len(desc1) > 10 and len(desc2) > 10:
+            desc_sim = SequenceMatcher(None, desc1, desc2).ratio()
+            return title_sim * 0.7 + desc_sim * 0.3
+        else:
+            return title_sim
+
     def calculate_news_quality(self, news: Dict, topic_keywords: List[str]) -> float:
         """
-        计算新闻质量分数（用于筛选和排序）
-
-        评分标准：
-        - 标题长度适中（20-100字符）：+10分
-        - 有描述内容：+10分
-        - 标题包含主题关键词：每个关键词+5分
-        - 来源可信度：知名媒体+10分
-
+        计算新闻质量分数（升级版）
+        
         Args:
             news: 新闻字典
             topic_keywords: 主题关键词列表
-
+            
         Returns:
             质量分数（0-100）
         """
         score = 0.0
 
-        # 1. 标题质量（20分）
+        # 1. 标题质量（15分）- 调整权重
         title = news.get('title', '')
         title_len = len(title)
         if 20 <= title_len <= 100:
-            score += 20
-        elif 10 <= title_len < 20 or 100 < title_len <= 150:
-            score += 10
-
-        # 2. 描述质量（15分）
-        description = news.get('description', '')
-        if len(description) > 50:
             score += 15
-        elif len(description) > 20:
+        elif 10 <= title_len < 20 or 100 < title_len <= 150:
             score += 8
 
-        # 3. 关键词相关度（30分）
+        # 2. 描述质量（10分）
+        description = news.get('description', '')
+        if len(description) > 50:
+            score += 10
+        elif len(description) > 20:
+            score += 5
+
+        # 3. 关键词相关度（25分）
         title_lower = title.lower()
         desc_lower = description.lower()
         keyword_matches = 0
         for keyword in topic_keywords:
             keyword_lower = keyword.lower()
             if keyword_lower in title_lower:
-                keyword_matches += 2
+                keyword_matches += 3 # 提升标题关键词权重
             if keyword_lower in desc_lower:
                 keyword_matches += 1
-        score += min(keyword_matches * 5, 30)  # 最多30分
+        score += min(keyword_matches * 5, 25)
 
-        # 4. 来源可信度（20分）
-        trusted_sources = [
-            '36kr', '36氪', 'IT之家', '虎嗅', '少数派', 'sspai',
-            '新浪', '腾讯', '网易', '搜狐', '财新', '界面',
-            'reuters', 'bloomberg', 'techcrunch', 'wired',
-            '量子位', 'qbitai', '机器之心', 'jiqizhixin',
-            'mit technology review', 'hacker news', 'ars technica',
-            'google ai', 'openai', 'papers with code', 'aiweekly',
-            '极客公园', 'geekpark', '爱范儿', 'ifanr', 'pingwest', '品玩',
-            'edsurge', 'chronicle', 'crunchbase'
+        # 4. 来源可信度（30分）- 细分权重
+        # Tier 1 (30分): 顶级行业权威
+        tier1_sources = [
+             'inside higher ed', 'chronicle', 'edsurge', 'the pie news', 'icef',
+             'mit technology review', 'nature', 'science', 'openai', 'google ai',
+             'venturebeat', 'techcrunch', '36kr', 'caixin', 'latepost', '晚点'
         ]
+        # Tier 2 (20分): 优质媒体
+        tier2_sources = [
+            'times higher education', 'qs', 'university world news', 'study international',
+            'jiemodui', '芥末堆', 'heibandongcha', '黑板洞察', 'duozhi', '多知',
+            'qbitai', '量子位', 'jiqizhixin', '机器之心', 'hugging face',
+            'the verge', 'wired', 'ars technica', 'bloomberg', 'reuters',
+            'huxiu', '虎嗅', 'geekpark', '极客公园'
+        ]
+        
         source = str(news.get('source', '') or '').lower()
-        for trusted in trusted_sources:
-            if trusted in source:
-                score += 20
+        found_source = False
+        
+        for s in tier1_sources:
+            if s in source:
+                score += 30
+                found_source = True
                 break
+        
+        if not found_source:
+             for s in tier2_sources:
+                if s in source:
+                    score += 20
+                    found_source = True
+                    break
+                    
+        if not found_source and news.get('source'):
+            score += 10 # 有来源即便不在列表中也给基础分
 
-        # 5. 有URL链接（15分）
-        if news.get('url', ''):
-            score += 15
+        # 5. 时效性评分 (20分) - 新增
+        try:
+            from dateutil import parser
+            from datetime import datetime, timezone
+            
+            # 使用现有方法检查，但这里我们计算具体天数给分
+            cleaned_time = self.clean_rss_time(news.get('time', ''))
+            if cleaned_time:
+                news_date = parser.parse(cleaned_time)
+                # 统一时区处理，避免报错
+                if news_date.tzinfo is None:
+                    now = datetime.now()
+                else:
+                    now = datetime.now(news_date.tzinfo)
+                    
+                diff = now - news_date
+                days = diff.days
+                
+                if days < 1:  # 24小时内
+                    score += 20
+                elif days < 2: # 48小时内
+                    score += 15
+                elif days < 3: # 3天内
+                    score += 10
+                elif days < 7: # 一周内
+                    score += 5
+        except:
+            pass # 解析失败不加分
 
         return score
 
+    def _get_cache(self, key: str):
+        """读取缓存"""
+        import pickle
+        import time
+        import hashlib
+        
+        file_hash = hashlib.md5(key.encode('utf-8')).hexdigest()
+        cache_path = os.path.join(self.cache_dir, file_hash)
+        
+        if os.path.exists(cache_path):
+            # 检查是否过期
+            mtime = os.path.getmtime(cache_path)
+            if time.time() - mtime < self.cache_ttl:
+                try:
+                    with open(cache_path, 'rb') as f:
+                        return pickle.load(f)
+                except Exception:
+                    pass
+        return None
+
+    def _set_cache(self, key: str, data: Any):
+        """写入缓存"""
+        import pickle
+        import hashlib
+        
+        file_hash = hashlib.md5(key.encode('utf-8')).hexdigest()
+        cache_path = os.path.join(self.cache_dir, file_hash)
+        
+        try:
+            with open(cache_path, 'wb') as f:
+                pickle.dump(data, f)
+        except Exception as e:
+            logger.warning(f"写入缓存失败: {e}")
+
     def fetch_rss_news(self, topic_key: str, num: int = 5) -> List[Dict]:
         """
-        从RSS订阅源获取新闻（并行处理）
+        从RSS订阅源获取新闻（并行处理 + 缓存）
 
         Args:
             topic_key: 主题关键字
@@ -378,22 +554,53 @@ class NewsFetcher:
         all_news = []
 
         def fetch_single_feed(feed_url):
+            def looks_like_feed_bytes(data: bytes) -> bool:
+                if not data:
+                    return False
+                head = data.lstrip()[:400].lower()
+                return head.startswith(b'<?xml') or b'<rss' in head or b'<feed' in head
+
+            # 1. 尝试读取缓存
+            cached_news = self._get_cache(feed_url)
+            if cached_news is not None:
+                logger.debug(f"  └─ [缓存命中] {feed_url[:30]}...")
+                return cached_news
+
+            # 2. 如果无缓存，发起网络请求
             try:
-                logger.info(f"  └─ [并行] 从RSS获取: {feed_url[:50]}...")
+                logger.info(f"  └─ [网络请求] 从RSS获取: {feed_url[:50]}...")
                 
                 # 使用requests获取内容，带上User-Agent以绕过反爬
                 headers = {
                     'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                    'Accept': 'application/rss+xml, application/xml, text/xml, */*'
+                    'Accept': 'application/rss+xml, application/atom+xml, application/xml, text/xml, */*'
                 }
                 
+                content = None
                 try:
                     response = self.session.get(feed_url, headers=headers, timeout=15)
-                    response.raise_for_status()
-                    content = response.content
+                    status = response.status_code
+                    content_type = (response.headers.get('Content-Type') or '').lower()
+
+                    if status >= 400:
+                        # 明确不存在的资源不要继续“直接解析”，避免产生大量 XML/HTML 解析噪音
+                        if status in (404, 410):
+                            logger.warning(f"⚠️ RSS请求失败 {feed_url}: HTTP {status}（跳过）")
+                            return []
+
+                        # 某些站点会返回非200但仍携带可解析的XML内容（如 403/429/5xx 的缓存页）
+                        if response.content and ('xml' in content_type or looks_like_feed_bytes(response.content)):
+                            content = response.content
+                        else:
+                            response.raise_for_status()
+                    else:
+                        content = response.content
+                except requests.exceptions.HTTPError as req_err:
+                    logger.warning(f"⚠️ RSS请求失败 {feed_url}: {req_err}")
+                    return []
                 except Exception as req_err:
                     logger.warning(f"⚠️ RSS请求失败 {feed_url}: {req_err}，尝试直接解析...")
-                    # 如果请求失败，尝试直接用feedparser解析（作为后备）
+                    # 如果请求失败（超时/连接问题等），尝试直接用feedparser解析（作为后备）
                     content = None
 
                 if content:
@@ -408,17 +615,23 @@ class NewsFetcher:
                 feed_news = []
                 for entry in feed.entries[:num]:
                     # 提取新闻信息
+                    # 尝试多种时间字段
+                    pub_time = entry.get('published', entry.get('updated', entry.get('pubDate', '')))
+                    entry_id = entry.get('id', entry.get('guid', ''))
                     news_item = {
                         'title': entry.get('title', ''),
                         'description': entry.get('summary', entry.get('description', ''))[:200],
                         'source': feed.feed.get('title', 'RSS'),
                         'url': entry.get('link', ''),
-                        'time': entry.get('published', entry.get('updated', ''))
+                        'id': entry_id,
+                        'time': pub_time
                     }
                     feed_news.append(news_item)
                 
                 if feed_news:
                     logger.info(f"✅ RSS获取{len(feed_news)}条新闻 ({feed_url[:30]}...)")
+                    # 3. 写入缓存
+                    self._set_cache(feed_url, feed_news)
                 else:
                     logger.info(f"⚠️ RSS无内容 ({feed_url[:30]}...)")
                     
@@ -437,7 +650,60 @@ class NewsFetcher:
                 except Exception as exc:
                     logger.error(f"❌ RSS任务异常: {exc}")
 
-        return all_news[:num]
+        # 返回所有新闻，不在这里截断（让后续的质量评分和去重来筛选）
+        return all_news
+
+    def contains_negative_keywords(self, title: str, description: str = "") -> bool:
+        """
+        检查是否包含负面关键词（需要过滤的内容）
+        
+        Args:
+            title: 新闻标题
+            description: 新闻描述
+            
+        Returns:
+            bool: 是否包含负面关键词
+        """
+        text = (title + " " + str(description)).lower()
+        
+        for keyword in NEGATIVE_KEYWORDS:
+            if keyword.lower() in text:
+                logger.debug(f"    -> 匹配负面关键词: {keyword}")
+                return True
+                
+        return False
+
+    
+    def clean_rss_time(self, time_str: str) -> str:
+        """
+        清洗RSS时间字符串，处理中文日期等问题
+        
+        Args:
+            time_str: 原始时间字符串
+            
+        Returns:
+            str: 清洗后的时间字符串
+        """
+        if not time_str:
+            return ""
+            
+        # 替换中文星期和月份
+        replacements = [
+            ('星期一', 'Mon'), ('星期二', 'Tue'), ('星期三', 'Wed'), ('星期四', 'Thu'), ('星期五', 'Fri'), ('星期六', 'Sat'), ('星期日', 'Sun'),
+            ('周一', 'Mon'), ('周二', 'Tue'), ('周三', 'Wed'), ('周四', 'Thu'), ('周五', 'Fri'), ('周六', 'Sat'), ('周日', 'Sun'),
+            ('十二月', 'Dec'), ('十一月', 'Nov'),
+            ('一月', 'Jan'), ('二月', 'Feb'), ('三月', 'Mar'), ('四月', 'Apr'), ('五月', 'May'), ('六月', 'Jun'),
+            ('七月', 'Jul'), ('八月', 'Aug'), ('九月', 'Sep'), ('十月', 'Oct')
+        ]
+        
+        cleaned = time_str
+        for k, v in replacements:
+            cleaned = cleaned.replace(k, v)
+            
+        # 处理可能的 "2025年12月16日" 格式
+        cleaned = cleaned.replace('年', '-').replace('月', '-').replace('日', '')
+        
+        return cleaned
 
     def is_news_recent(self, news_time: str, max_days: int = 7) -> bool:
         """
@@ -451,27 +717,38 @@ class NewsFetcher:
             bool: 是否为最近新闻
         """
         if not news_time:
-            return True  # 如果没有时间信息，默认认为是最近的
+            # 修改：如果没有时间信息，为了保守起见，认为是过期的（除非明确不需要时间过滤）
+            # 或者可以尝试从其他字段提取，但这里简单设为False以避免旧闻
+            return False 
             
         try:
             from dateutil import parser
-            from datetime import datetime, timedelta
+            from datetime import datetime, timedelta, timezone
             
             # 解析新闻时间
-            news_date = parser.parse(news_time)
-            # 移除时区信息进行比较
-            if news_date.tzinfo:
-                news_date = news_date.replace(tzinfo=None)
-                
-            # 当前时间
-            now = datetime.now()
+            # 先进行清洗
+            cleaned_time = self.clean_rss_time(news_time)
+            news_date = parser.parse(cleaned_time)
             
-            # 检查是否在指定天数内
-            return (now - news_date).days <= max_days
+            #以此为基准：当前时间（带时区）
+            now = datetime.now(news_date.tzinfo or timezone.utc)
+            
+            # 如果news_date也没时区，就都转为无时区
+            if news_date.tzinfo is None:
+                now = datetime.now()
+
+            # 计算时间差
+            diff = now - news_date
+            
+            logger.debug(f"时间检查: {news_time} -> {news_date} | Now: {now} | Diff days: {diff.days}")
+            
+            # 检查是否在指定天数内，且不能是未来的新闻（允许少量误差）
+            return 0 <= diff.days <= max_days
+
             
         except Exception as e:
             logger.warning(f"解析新闻时间失败 '{news_time}': {e}")
-            return True  # 解析失败时默认认为是最近的
+            return False  # 修改：解析失败时默认认为是过期的
 
     def apply_diversity_filter(self, news_list: List[Dict], max_per_source: int = 2) -> List[Dict]:
         """
@@ -524,7 +801,8 @@ class NewsFetcher:
             return []
 
         def task_rss():
-            return self.fetch_rss_news(topic, num=5)
+            # 获取更多RSS新闻以应对过滤（从5条增加到30条）
+            return self.fetch_rss_news(topic, num=30)
 
         def task_newsapi():
             results = []
@@ -556,19 +834,54 @@ class NewsFetcher:
                     logger.error(f"❌ {source_name} 任务异常: {exc}")
 
         # 去重和时间过滤（按标题去重，只保留最近7天的新闻）
+        seen_urls = set()
+        seen_ids = set()
         seen_titles = set()
         unique_news = []
         for news in all_news:
-            title = news['title']
+            title = str(news.get('title') or '').strip()
+            description = news.get('description', '')
             news_time = news.get('time', '')
+
+            canonical_id = self._canonical_id(news.get('id') or news.get('guid') or '')
+            normalized_url = self._normalize_url(news.get('url', ''))
+
+            if canonical_id and canonical_id in seen_ids:
+                logger.debug(f"❌ 去重(id/guid): {title[:50]}...")
+                continue
+            if normalized_url and normalized_url in seen_urls:
+                logger.debug(f"❌ 去重(url): {title[:50]}...")
+                continue
             
+            # 检查是否包含负面关键词
+            if self.contains_negative_keywords(title, description):
+                logger.debug(f"🗑️ 过滤无关新闻: {title[:50]}... (包含负面关键词)")
+                continue
+
             # 检查是否重复和是否为最近新闻
+            # 检查是否重复（使用智能相似度去重）
+            is_duplicate = False
+            for existing_news in unique_news:
+                # 如果从 seen_titles 中找不到（说明之前没直接匹配上），但相似度很高
+                similarity = self.calculate_similarity(news, existing_news)
+                if similarity > 0.75: # 相似度阈值
+                    logger.debug(f"❌ 智能去重: '{title[:30]}...' 与 '{existing_news['title'][:30]}...' 相似度 {similarity:.2f}")
+                    is_duplicate = True
+                    break
+            
+            if is_duplicate:
+                continue
+
             if title not in seen_titles and self.is_news_recent(news_time, max_days=7):
                 seen_titles.add(title)
                 unique_news.append(news)
+                if normalized_url:
+                    seen_urls.add(normalized_url)
+                if canonical_id:
+                    seen_ids.add(canonical_id)
                 logger.debug(f"✅ 保留新闻: {title[:50]}... (时间: {news_time})")
             elif title in seen_titles:
-                logger.debug(f"❌ 去重: {title[:50]}...")
+                logger.debug(f"❌ 去重(标题匹配): {title[:50]}...")
             else:
                 logger.debug(f"❌ 过时: {title[:50]}... (时间: {news_time})")
 
@@ -581,8 +894,8 @@ class NewsFetcher:
 
         logger.info(f"📰 {topic}: 从所有源获取{len(unique_news)}条真实新闻，已按质量排序")
 
-        # 应用多样性过滤器（每个来源最多2条）
-        diverse_news = self.apply_diversity_filter(unique_news, max_per_source=2)
+        # 应用多样性过滤器（每个来源最多3条）
+        diverse_news = self.apply_diversity_filter(unique_news, max_per_source=3)
         logger.info(f"🔍 多样性过滤: {len(unique_news)} -> {len(diverse_news)} 条")
 
         # 返回高质量新闻（只返回评分>30的新闻）

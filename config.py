@@ -31,6 +31,16 @@ ACTIVE_TOPICS_ENV = os.getenv(
     'study_abroad,market_data,industry_news,edu_policy,uni_rankings'
 )
 
+# Topic Aliases (backward compatibility for old env values)
+TOPIC_ALIASES = {
+    # legacy/previous naming
+    'edu_market': 'market_data',
+    'competitors': 'industry_news',
+}
+
+# If enabled, still send a digest even when no new items are found
+SEND_WHEN_NO_NEW = os.getenv('SEND_WHEN_NO_NEW', '0').strip().lower() in ('1', 'true', 'yes', 'y', 'on')
+
 # News Topics Configuration
 NEWS_TOPICS = {
     'ai': {'name': 'AI科技', 'emoji': '🤖', 'desc': 'AI领域最新动态', 'color': '#4A90E2'},
@@ -89,3 +99,14 @@ TOPIC_KEYWORDS = {
     'pbsa': ['学生公寓', 'PBSA', '租房'],
     'uhomes': ['异乡好居', 'Uhomes']
 }
+
+# Negative Keywords (Filter out irrelevant content)
+NEGATIVE_KEYWORDS = [
+    '早教', '幼教', '幼儿园', '托育', '保育',             # Early Education
+    'K12', '中小学', '义务教育', '双减', '中考', '高考',   # Domestic K12
+    '考研', '公务员', '公考', '事业单位',                 # Domestic exams
+    '少儿英语', '素质教育', '编程猫', '作业帮',            # Specific domestic sectors
+    '职业教育', '职教', '技校',                          # Vocational (domestic)
+    '金宝贝', '美吉姆',                                  # Specific noise brands
+    '猿辅导', '掌门1对1', '火花思维',                     # More domestic K12/Early ed
+]
