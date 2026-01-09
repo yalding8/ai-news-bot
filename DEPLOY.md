@@ -150,13 +150,13 @@ python3 bot_wecom.py
 #### 3. 设置定时任务
 
 ```bash
-# 添加定时任务（每天早上9点推送）
+# 添加定时任务（北京时间每天早上 8:30 推送）
 crontab -e
 ```
 
 添加以下内容：
 ```cron
-0 9 * * * cd /opt/apps/ai-news-bot && /opt/apps/ai-news-bot/venv/bin/python3 bot_wecom.py >> /var/log/ai-news.log 2>&1
+30 0 * * * cd /opt/apps/ai-news-bot && /opt/apps/ai-news-bot/venv/bin/python3 bot_wecom.py >> /var/log/ai-news.log 2>&1
 ```
 
 ## 🔧 常见问题

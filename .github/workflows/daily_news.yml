@@ -2,8 +2,8 @@ name: AI News Push
 
 on:
   schedule:
-    # 每天 01:00 UTC (北京时间 09:00 AM)
-    - cron: '0 1 * * *'
+    # 每天 00:30 UTC (北京时间 08:30 AM)
+    - cron: '30 0 * * *'
   workflow_dispatch:
     # 支持手动触发
 

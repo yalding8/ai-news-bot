@@ -121,7 +121,9 @@ class NewsFetcher:
                 'https://thepienews.com/feed/',              # The PIE News（留学行业权威）
                 'https://www.studyinternational.com/feed/',  # Study International
                 'https://www.insidehighered.com/rss.xml',    # Inside Higher Ed
+                'https://www.chronicle.com/section/news.rss', # The Chronicle of Higher Education (新增)
                 'https://www.highereddive.com/feeds/news/',  # Higher Ed Dive（新增-高等教育深度报道）
+                'https://www.nafsa.org/rss/news',            # NAFSA News (新增)
                 # 新增 Phase 1 源
                 'https://wenr.wes.org/feed',                 # WENR (World Education News)
                 'https://universitybusiness.com/feed/',      # University Business
@@ -136,6 +138,7 @@ class NewsFetcher:
                 # 政策类RSS源
                 'https://thepienews.com/feed/',              # The PIE News（政策报道）
                 'https://www.studyinternational.com/feed/',  # Study International
+                'https://www.nafsa.org/rss/news',            # NAFSA News (新增-政策)
                 'https://www.insidehighered.com/rss.xml',    # Inside Higher Ed（政策）
                 'https://www.highereddive.com/feeds/news/',  # Higher Ed Dive（政策深度报道）
                 'https://www.jiemodui.com/rss.xml',          # 芥末堆（中国教育政策）
@@ -425,6 +428,15 @@ class NewsFetcher:
         title_lower = title.lower()
         desc_lower = description.lower()
         keyword_matches = 0
+        
+        # 高价值关键词加分（如政策、签证、突发）
+        high_value_keywords = ['visa', 'policy', 'visa policy', 'breaking', 'ranking', 'qs', 'the', 'immigration', 'urgent', '签证', '政策', '排名', '最新', '发布']
+        for hw in high_value_keywords:
+            if hw in title_lower:
+                score += 5 # 标题每匹配到一个高价值词 +5
+            elif hw in desc_lower:
+                score += 2 # 描述每匹配到一个高价值词 +2
+        
         for keyword in topic_keywords:
             keyword_lower = keyword.lower()
             if keyword_lower in title_lower:

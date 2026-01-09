@@ -114,9 +114,9 @@ python3 -c "import bot_wecom; import news_fetcher; import config" && \
     log_info "模块导入测试通过" || \
     log_error "模块导入测试失败，请检查代码"
 
-# 10. 设置定时任务
+# 10. 设置定时任务（北京时间 8:30 = UTC 00:30）
 log_info "设置定时任务..."
-CRON_CMD="0 9 * * * cd $REMOTE_DIR && $REMOTE_DIR/venv/bin/python3 bot_wecom.py >> /var/log/ai-news.log 2>&1"
+CRON_CMD="30 0 * * * cd $REMOTE_DIR && $REMOTE_DIR/venv/bin/python3 bot_wecom.py >> /var/log/ai-news.log 2>&1"
 
 # 检查定时任务是否已存在
 if ! crontab -l 2>/dev/null | grep -q "bot_wecom.py"; then

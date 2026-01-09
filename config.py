@@ -101,12 +101,15 @@ TOPIC_KEYWORDS = {
 }
 
 # Negative Keywords (Filter out irrelevant content)
+# 增加更多噪音词，特别是针对国内 K12 和非相关教育领域的过滤
 NEGATIVE_KEYWORDS = [
     '早教', '幼教', '幼儿园', '托育', '保育',             # Early Education
     'K12', '中小学', '义务教育', '双减', '中考', '高考',   # Domestic K12
     '考研', '公务员', '公考', '事业单位',                 # Domestic exams
-    '少儿英语', '素质教育', '编程猫', '作业帮',            # Specific domestic sectors
-    '职业教育', '职教', '技校',                          # Vocational (domestic)
+    '少儿英语', '素质教育', '编程', '奥数', '学区房',      # Specific domestic sectors
+    '职业教育', '职教', '技校', '职高',                   # Vocational (domestic)
     '金宝贝', '美吉姆',                                  # Specific noise brands
-    '猿辅导', '掌门1对1', '火花思维',                     # More domestic K12/Early ed
+    '猿辅导', '作业帮', '火花思维', '编程猫',             # More domestic K12/Early ed
+    '辅导机构', '补课', '培训班', '冬令营', '夏令营',      # General noise
+    '研学', '营地教育', '研学旅行',                      # Specialized domestic noise
 ]
