@@ -12,13 +12,13 @@ class AISummarizer:
 
     def summarize_news(self, topic_key: str, news_list: list, news_text: str) -> str:
         """
-        使用AI总结新闻
-        
+        使用AI总结新闻 (增强版 - 带内容验证)
+
         Args:
             topic_key: 主题键值
             news_list: 原始新闻列表
             news_text: 格式化后的新闻文本
-            
+
         Returns:
             str: AI生成的总结
         """
@@ -27,7 +27,7 @@ class AISummarizer:
             return "未知主题"
 
         logger.info(f"  └─ AI正在总结{topic_info['name']}新闻...")
-        
+
         try:
             response = self.client.chat.completions.create(
                 model="deepseek-chat",
@@ -50,16 +50,24 @@ class AISummarizer:
                 max_tokens=800,
                 temperature=0.3
             )
-            
-            return response.choices[0].message.content
+
+            summary = response.choices[0].message.content
+
+            # ✅ 新增: 内容验证
+            if not self._validate_summary(summary, news_list):
+                logger.error("❌ AI总结验证失败，使用降级策略")
+                return self._fallback_summary(news_list, topic_info['name'])
+
+            logger.info(f"✅ AI总结验证通过 (长度: {len(summary)} 字符)")
+            return summary
 
         except Exception as e:
             logger.error(f"❌ AI总结失败: {e}")
-            return f"⚠️ AI总结失败: {str(e)}"
+            return self._fallback_summary(news_list, topic_info['name'])
 
     def summarize_daily_news(self, news_list: list, news_text: str) -> str:
         """
-        生成每日新闻摘要（不分主题，统一总结）
+        生成每日新闻摘要（不分主题，统一总结，增强版 - 带内容验证）
 
         Args:
             news_list: 原始新闻列表
@@ -94,8 +102,104 @@ class AISummarizer:
                 temperature=0.3
             )
 
-            return response.choices[0].message.content
+            summary = response.choices[0].message.content
+
+            # ✅ 新增: 内容验证
+            if not self._validate_summary(summary, news_list, min_length=100):
+                logger.error("❌ 每日新闻总结验证失败，使用降级策略")
+                return self._fallback_summary(news_list, "国际教育新闻")
+
+            logger.info(f"✅ 每日新闻总结验证通过 (长度: {len(summary)} 字符)")
+            return summary
 
         except Exception as e:
             logger.error(f"❌ AI总结失败: {e}")
-            return f"⚠️ AI总结失败: {str(e)}"
+            return self._fallback_summary(news_list, "国际教育新闻")
+
+    def _validate_summary(self, summary: str, news_list: list, min_length: int = 50) -> bool:
+        """
+        验证 AI 总结质量
+
+        Args:
+            summary: AI 生成的总结
+            news_list: 原始新闻列表
+            min_length: 最小字符数
+
+        Returns:
+            bool: 验证是否通过
+        """
+        # 1. 检查是否为空或过短
+        if not summary or len(summary.strip()) < min_length:
+            logger.warning(f"⚠️ 总结过短: {len(summary) if summary else 0} 字符 (最低要求: {min_length})")
+            return False
+
+        # 2. 检查是否包含错误提示
+        error_patterns = ['⚠️', 'AI总结失败', '无法', '出错', 'error', 'failed']
+        if any(pattern in summary for pattern in error_patterns):
+            logger.warning(f"⚠️ 总结包含错误提示")
+            return False
+
+        # 3. 检查是否与原文相关 (使用简单的关键词匹配)
+        # 提取原文标题中的关键词
+        from collections import Counter
+        import re
+
+        # 提取所有新闻标题中的有效词汇
+        all_words = []
+        for news in news_list[:5]:  # 只检查前5条
+            title = news.get('title', '')
+            # 提取中英文词汇 (长度>=2的词)
+            words = re.findall(r'[\u4e00-\u9fa5]{2,}|[a-zA-Z]{3,}', title)
+            all_words.extend(words)
+
+        if not all_words:
+            # 如果无法提取关键词，跳过此检查
+            return True
+
+        # 统计高频词 (前10个)
+        word_freq = Counter(all_words)
+        top_keywords = [word for word, _ in word_freq.most_common(10)]
+
+        # 检查总结中是否包含至少2个关键词
+        matches = sum(1 for kw in top_keywords if kw.lower() in summary.lower())
+        if matches < 2:
+            logger.warning(f"⚠️ 总结与原文相关度过低 (匹配关键词: {matches}/10)")
+            # 不强制返回False，因为可能是翻译问题
+            # return False
+
+        logger.debug(f"✅ 总结验证通过: 长度={len(summary)}, 关键词匹配={matches}")
+        return True
+
+    def _fallback_summary(self, news_list: list, topic_name: str = "新闻") -> str:
+        """
+        降级策略: 简单格式化新闻列表
+
+        Args:
+            news_list: 原始新闻列表
+            topic_name: 主题名称
+
+        Returns:
+            str: 格式化的新闻列表
+        """
+        if not news_list:
+            return f"⚠️ 今日暂无{topic_name}"
+
+        lines = [f"📰 **今日{topic_name}要闻**\n"]
+
+        for i, news in enumerate(news_list[:5], 1):
+            title = news.get('title', '无标题')
+            description = news.get('description', '')
+
+            # 格式化每条新闻
+            lines.append(f"{i}. **{title}**")
+
+            if description and len(description) > 20:
+                # 截取描述前80字符
+                desc_preview = description[:80] + '...' if len(description) > 80 else description
+                lines.append(f"   {desc_preview}")
+
+            lines.append("")  # 空行
+
+        lines.append("💡 *AI 总结服务暂时不可用，以上为原始新闻摘要*")
+
+        return "\n".join(lines)

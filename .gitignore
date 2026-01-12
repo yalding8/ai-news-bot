@@ -48,3 +48,6 @@ health_check.sh
 
 # 新闻缓存文件
 .news_cache.json
+
+# 运行锁文件
+.news_bot.lock

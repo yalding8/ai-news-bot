@@ -193,6 +193,60 @@ def process_topic_news(topic_key: str) -> Dict:
         return {"success": False, "error": str(e), "topic_key": topic_key}
 
 
+def safe_truncate_markdown(message: str, max_bytes: int = 4000) -> str:
+    """
+    安全截断 Markdown 消息，保持格式完整
+
+    Args:
+        message: 原始消息
+        max_bytes: 最大字节数
+
+    Returns:
+        str: 截断后的消息
+    """
+    encoded = message.encode('utf-8')
+    if len(encoded) <= max_bytes:
+        return message
+
+    logger.warning(f"⚠️ 消息 {len(encoded)} 字节超过限制 {max_bytes}，进行智能截断")
+
+    # 定义 footer (确保 footer 能完整保留)
+    footer = "\n\n📌 *内容过长已截断，详细信息请查看原文链接*\n💡 *Powered By 异乡有你*"
+    footer_bytes = len(footer.encode('utf-8'))
+
+    # 按行分割
+    lines = message.split('\n')
+    truncated_lines = []
+    current_bytes = 0
+    safety_margin = footer_bytes + 50  # 额外留50字节安全边距
+
+    for line in lines:
+        line_bytes = len((line + '\n').encode('utf-8'))
+
+        # 检查是否会超出限制
+        if current_bytes + line_bytes + safety_margin > max_bytes:
+            logger.debug(f"🔍 在第 {len(truncated_lines)} 行停止（累计 {current_bytes} 字节）")
+            break
+
+        truncated_lines.append(line)
+        current_bytes += line_bytes
+
+    # 构造最终消息
+    result = '\n'.join(truncated_lines) + footer
+
+    # 最后验证 (防御性编程)
+    result_bytes = len(result.encode('utf-8'))
+    if result_bytes > max_bytes:
+        # 极端情况: 强制截断，但确保 UTF-8 完整性
+        logger.warning(f"⚠️ 截断后仍然超出 ({result_bytes} 字节)，进行二次截断")
+        safe_length = max_bytes - footer_bytes - 10
+        truncated_text = result.encode('utf-8')[:safe_length].decode('utf-8', errors='ignore').rstrip()
+        result = truncated_text + footer
+
+    logger.info(f"📊 截断完成: {len(result.encode('utf-8'))} 字节, 保留 {len(truncated_lines)}/{len(lines)} 行")
+    return result
+
+
 def send_daily_news(topics: list = None):
     """
     发送每日新闻汇总（合并所有主题为一条消息，去重）
@@ -272,14 +326,9 @@ def send_daily_news(topics: list = None):
     byte_length = len(final_message.encode('utf-8'))
     logger.info(f"📊 消息长度: {len(final_message)} 字符, {byte_length} 字节")
 
-    # 企业微信markdown限制4096字节
-    MAX_BYTES = 4000
-    if byte_length > MAX_BYTES:
-        logger.warning(f"⚠️ 消息 {byte_length} 字节超过限制，进行截断")
-        encoded = final_message.encode('utf-8')
-        truncated = encoded[:MAX_BYTES - 100]
-        final_message = truncated.decode('utf-8', errors='ignore') + "\n\n...\n💡 *Powered By 异乡有你*"
-        logger.info(f"📊 截断后: {len(final_message.encode('utf-8'))} 字节")
+    # ✅ 改进: 使用安全截断函数，保持 Markdown 格式完整
+    MAX_BYTES = 4000  # 企业微信 markdown 限制 4096 字节
+    final_message = safe_truncate_markdown(final_message, MAX_BYTES)
 
     # 发送消息
     logger.info("📤 正在发送新闻日报...")
@@ -296,6 +345,51 @@ def fetch_topic_news_raw(topic_key: str) -> list:
     return news_fetcher.fetch_news(topic_key, keywords, num=15)
 
 
+def check_run_lock():
+    """
+    检查运行锁，防止重复执行
+
+    Returns:
+        bool: 是否可以运行
+    """
+    import os
+    import time
+
+    lock_file = ".news_bot.lock"
+    lock_timeout = 3600  # 1小时超时
+
+    # 检查锁文件是否存在
+    if os.path.exists(lock_file):
+        # 检查锁文件的修改时间
+        lock_mtime = os.path.getmtime(lock_file)
+        if time.time() - lock_mtime < lock_timeout:
+            logger.warning("⚠️ 检测到其他实例正在运行，跳过本次执行")
+            return False
+        else:
+            logger.info("🔓 清理过期的锁文件")
+            os.remove(lock_file)
+
+    # 创建锁文件
+    try:
+        with open(lock_file, 'w') as f:
+            f.write(f"{time.time()}\n")
+        logger.debug("🔒 创建运行锁")
+        return True
+    except Exception as e:
+        logger.error(f"❌ 创建锁文件失败: {e}")
+        return True  # 锁失败时仍然运行
+
+def release_run_lock():
+    """释放运行锁"""
+    import os
+    lock_file = ".news_bot.lock"
+    try:
+        if os.path.exists(lock_file):
+            os.remove(lock_file)
+            logger.debug("🔓 释放运行锁")
+    except Exception as e:
+        logger.warning(f"⚠️ 释放锁失败: {e}")
+
 def main():
     """主函数"""
     if not WECOM_WEBHOOK_URLS:
@@ -303,15 +397,25 @@ def main():
         logger.info("请在 .env 文件中设置企业微信Webhook URL")
         return
 
-    logger.info("🚀 企业微信新闻机器人启动")
-    
-    # 解析环境变量决定推送哪些主题
-    active_topics = parse_active_topics(ACTIVE_TOPICS_ENV)
-    if not active_topics:
-        active_topics = ['ai', 'education']
-        
-    logger.info(f"📡 开始执行新闻任务（{len(active_topics)}个主题）...")
-    send_daily_news(active_topics)
+    # ✅ 新增: 检查运行锁，防止重复执行
+    if not check_run_lock():
+        logger.info("⏭️ 跳过本次执行（检测到其他实例运行中）")
+        return
+
+    try:
+        logger.info("🚀 企业微信新闻机器人启动")
+
+        # 解析环境变量决定推送哪些主题
+        active_topics = parse_active_topics(ACTIVE_TOPICS_ENV)
+        if not active_topics:
+            active_topics = ['ai', 'education']
+
+        logger.info(f"📡 开始执行新闻任务（{len(active_topics)}个主题）...")
+        send_daily_news(active_topics)
+
+    finally:
+        # ✅ 确保释放锁
+        release_run_lock()
 
 if __name__ == '__main__':
     main()
