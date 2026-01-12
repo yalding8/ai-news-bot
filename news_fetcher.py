@@ -398,19 +398,31 @@ class NewsFetcher:
 
     def calculate_news_quality(self, news: Dict, topic_keywords: List[str]) -> float:
         """
-        计算新闻质量分数（升级版）
-        
+        计算新闻质量分数（升级版 - Phase 1）
+
         Args:
             news: 新闻字典
             topic_keywords: 主题关键词列表
-            
+
         Returns:
             质量分数（0-100）
         """
         score = 0.0
 
-        # 1. 标题质量（15分）- 调整权重
+        # ========== Phase 1 新增：教育相关性检查 ==========
         title = news.get('title', '')
+        description = news.get('description', '')
+
+        relevance = self._calculate_education_relevance(title, description, topic_keywords)
+        news['education_relevance'] = relevance  # 保存用于调试
+
+        # 强制检查：相关性 < 0.3 直接淘汰
+        if relevance < 0.3:
+            logger.debug(f"❌ 相关性过低({relevance:.2f})，淘汰: {title[:40]}")
+            return 0
+        # ================================================
+
+        # 1. 标题质量（15分）- 调整权重
         title_len = len(title)
         if 20 <= title_len <= 100:
             score += 15
@@ -418,7 +430,6 @@ class NewsFetcher:
             score += 8
 
         # 2. 描述质量（10分）
-        description = news.get('description', '')
         if len(description) > 50:
             score += 10
         elif len(description) > 20:
@@ -445,40 +456,52 @@ class NewsFetcher:
                 keyword_matches += 1
         score += min(keyword_matches * 5, 25)
 
-        # 4. 来源可信度（30分）- 细分权重
-        # Tier 1 (30分): 顶级行业权威
-        tier1_sources = [
-             'inside higher ed', 'chronicle', 'edsurge', 'the pie news', 'icef',
-             'mit technology review', 'nature', 'science', 'openai', 'google ai',
-             'venturebeat', 'techcrunch', '36kr', 'caixin', 'latepost', '晚点'
-        ]
-        # Tier 2 (20分): 优质媒体
-        tier2_sources = [
-            'times higher education', 'qs', 'university world news', 'study international',
-            'jiemodui', '芥末堆', 'heibandongcha', '黑板洞察', 'duozhi', '多知',
-            'qbitai', '量子位', 'jiqizhixin', '机器之心', 'hugging face',
-            'the verge', 'wired', 'ars technica', 'bloomberg', 'reuters',
-            'huxiu', '虎嗅', 'geekpark', '极客公园'
-        ]
-        
+        # ========== Phase 1 修改：动态来源评分 ==========
+        # 4. 来源可信度（30分）
         source = str(news.get('source', '') or '').lower()
-        found_source = False
-        
-        for s in tier1_sources:
-            if s in source:
-                score += 30
-                found_source = True
-                break
-        
-        if not found_source:
-             for s in tier2_sources:
-                if s in source:
-                    score += 20
-                    found_source = True
-                    break
-                    
-        if not found_source and news.get('source'):
-            score += 10 # 有来源即便不在列表中也给基础分
+
+        # 教育专业媒体：固定高分（35分）
+        education_sources = [
+            'inside higher ed', 'chronicle', 'edsurge', 'the pie news', 'icef',
+            'jiemodui', '芥末堆', 'heibandongcha', '黑板洞察', 'duozhi', '多知',
+            'wenr', 'nafsa', 'study international'
+        ]
+
+        # 泛科技媒体：基础分 × 相关性系数（25分基础）
+        tech_sources = [
+            'techcrunch', '36kr', 'venturebeat', 'huxiu', '虎嗅',
+            'geekpark', '极客公园', 'latepost', '晚点', 'caixin', '财新'
+        ]
+
+        # 学术权威媒体：固定高分（30分）
+        academic_sources = ['nature', 'science', 'mit technology review']
+
+        # 其他优质媒体：固定中等分（20分）
+        quality_sources = [
+            'times higher education', 'qs', 'university world news',
+            'qbitai', '量子位', 'jiqizhixin', '机器之心', 'hugging face',
+            'the verge', 'wired', 'ars technica', 'bloomberg', 'reuters'
+        ]
+
+        if any(s in source for s in education_sources):
+            score += 35  # 教育媒体最高分
+            logger.debug(f"✅ 教育专业媒体: {source}")
+        elif any(s in source for s in academic_sources):
+            score += 30  # 学术权威
+            logger.debug(f"📚 学术权威媒体: {source}")
+        elif any(s in source for s in tech_sources):
+            # ✨ 关键改动：泛科技媒体打折
+            base_score = 25
+            adjusted_score = base_score * relevance
+            score += adjusted_score
+            logger.debug(f"⚖️ 泛科技媒体打折: {source} (基础{base_score} × 相关性{relevance:.2f} = {adjusted_score:.1f})")
+        elif any(s in source for s in quality_sources):
+            score += 20  # 优质媒体
+            logger.debug(f"📰 优质媒体: {source}")
+        elif news.get('source'):
+            score += 10 * relevance  # 其他来源也打折
+            logger.debug(f"🔍 其他来源: {source} (10 × {relevance:.2f} = {10 * relevance:.1f})")
+        # ================================================
 
         # 5. 时效性评分 (20分) - 新增
         try:
@@ -509,7 +532,142 @@ class NewsFetcher:
         except:
             pass # 解析失败不加分
 
-        return score
+        # ========== Phase 1 新增：负面关键词惩罚 ==========
+        # 6. 负面关键词检测（-20分）
+        negative_keywords = [
+            # 金融类
+            '港股', 'a股', '证券', '基金', '煤炭', '钢铁', '房地产', '地产',
+            # 娱乐类
+            '游戏', '电竞', '直播', '网红', '带货',
+            # 技术类（不相关）
+            '漏洞', '渗透测试', 'sql注入', 'ciso',
+            # 国内考试
+            '考研', '公务员', '公考', '事业单位'
+        ]
+
+        text_lower = (title + ' ' + description).lower()
+        for neg_kw in negative_keywords:
+            if neg_kw in text_lower:
+                score -= 20
+                logger.debug(f"⚠️ 负面关键词惩罚(-20): {neg_kw} | {title[:40]}")
+                break  # 只惩罚一次
+        # ================================================
+
+        # ========== Phase 1 新增：信号等级加权 ==========
+        signal_level = self.classify_signal_level(news)
+        news['signal_level'] = signal_level  # 保存标签
+
+        if signal_level == 1:
+            score *= 1.5
+            logger.debug(f"✨ 一级信号加权(×1.5): {title[:40]}")
+        elif signal_level == 2:
+            score *= 1.2
+            logger.debug(f"📊 二级信号加权(×1.2): {title[:40]}")
+        # ================================================
+
+        return max(score, 0)  # 确保不为负数
+
+    def _calculate_education_relevance(self, title: str, desc: str, keywords: List[str]) -> float:
+        """
+        计算教育相关性系数（0-1）
+
+        核心逻辑：
+        - 强相关词命中 → 系数 0.8-1.0
+        - 弱相关词命中 → 系数 0.3-0.5
+        - 无关键词命中 → 系数 0.1-0.2
+
+        Args:
+            title: 新闻标题
+            desc: 新闻描述
+            keywords: 主题关键词列表
+
+        Returns:
+            float: 相关性系数（0-1）
+        """
+        text = (title + ' ' + desc).lower()
+
+        # ========== 新增：排除泛科技内容 ==========
+        # 如果包含这些词，且没有强留学词，则降低相关性
+        tech_irrelevant = [
+            '大模型', 'agi', 'llm', 'gpt', '算力', '芯片', '半导体',
+            '开源', 'transformer', '推理', '训练', 'token'
+        ]
+
+        if any(kw in text for kw in tech_irrelevant):
+            # 检查是否有强留学词
+            strong_edu = ['留学', '签证', '招生', '申请', 'study abroad', 'visa', 'admissions', 'international students']
+            if not any(kw in text for kw in strong_edu):
+                logger.debug(f"⚠️ 泛科技内容，降低相关性: {title[:40]}")
+                return 0.1  # 泛科技但无留学词，降低相关性
+        # ==========================================
+
+        # 1. 强相关词（留学核心）
+        strong_keywords = [
+            'study abroad', 'international students', 'overseas education',
+            'visa', 'admissions', 'scholarship', 'tuition', 'immigration',
+            '留学', '签证', '招生', '申请', '移民', '奖学金'
+        ]
+
+        strong_match = sum(1 for kw in strong_keywords if kw in text)
+
+        if strong_match >= 3:
+            return 1.0  # 非常相关
+        elif strong_match >= 1:
+            return 0.8  # 较相关
+
+        # 2. 弱相关词（泛教育）
+        weak_keywords = ['education', 'university', 'student', 'college', '教育', '大学', '学生']
+        weak_match = sum(1 for kw in weak_keywords if kw in text)
+
+        if weak_match >= 2:
+            return 0.5  # 弱相关
+        elif weak_match >= 1:
+            return 0.3  # 很弱相关
+
+        return 0.1  # 基本不相关
+
+    def classify_signal_level(self, news: Dict) -> int:
+        """
+        分类新闻信号等级（1-3）
+
+        Returns:
+            1: 一级信号（事实变更：政策、签证、招生截止日期）
+            2: 二级信号（权威解读：数据报告、行业分析）
+            3: 三级信号（泛资讯：融资、观点、合作）
+        """
+        title = news.get('title', '').lower()
+        source = str(news.get('source', '')).lower()
+        url = news.get('url', '').lower()
+
+        # 一级信号判断
+        level1_domains = ['.gov', '.edu', 'gov.uk', 'state.gov', 'uscis.gov', 'homeaffairs.gov.au']
+        level1_keywords = [
+            'policy', 'regulation', 'visa update', 'deadline', 'application open',
+            '政策', '新规', '签证', '截止日期', '开放申请', '放榜', '录取'
+        ]
+
+        if any(d in url for d in level1_domains):
+            return 1
+        if any(kw in title for kw in level1_keywords):
+            return 1
+
+        # 二级信号判断
+        level2_sources = [
+            'pie news', 'icef', 'inside higher ed', 'wenr', 'nafsa',
+            '芥末堆', '黑板洞察', 'times higher education', 'qs'
+        ]
+        level2_keywords = [
+            'report', 'statistics', 'survey', 'white paper', 'data release',
+            '报告', '数据', '统计', '调查', '白皮书', '趋势分析'
+        ]
+
+        if any(s in source for s in level2_sources):
+            return 2
+        if any(kw in title for kw in level2_keywords):
+            return 2
+
+        # 三级信号
+        return 3
 
     def _get_cache(self, key: str):
         """读取缓存"""
@@ -934,10 +1092,12 @@ class NewsFetcher:
 
         formatted = []
         for i, news in enumerate(news_list, 1):
+            description = news.get('description') or ''
+            desc_preview = description[:200]
             formatted.append(
                 f"{i}. {news['title']}\n"
                 f"   来源: {news['source']}\n"
-                f"   摘要: {news['description'][:100]}...\n"
+                f"   摘要: {desc_preview}...\n"
                 f"   链接: {news['url']}\n"
             )
 

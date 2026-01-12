@@ -60,6 +60,24 @@ NEWS_TOPICS = {
     'uhomes': {'name': '异乡好居', 'emoji': '🏡', 'desc': '异乡好居企业动态', 'color': '#FF6B6B'}
 }
 
+# Keywords to keep daily digest focused on international education content.
+EDUCATION_RELEVANT_KEYWORDS = [
+    '国际教育', '留学', '留学生', '出国', '海外留学', '申请', '录取', '录取率',
+    '院校', '大学', '高校', '高等教育', '学费', '奖学金', '签证', '移民',
+    '招生', '申请季', '排名', 'QS', 'THE', 'US News',
+    'study abroad', 'international student', 'university', 'college',
+    'higher education', 'tuition', 'admissions', 'visa', 'scholarship'
+]
+
+# Extra-weighted keywords for policy/admissions/visa emphasis.
+EDUCATION_PRIORITY_KEYWORDS = [
+    '政策', '法案', '规则', '法规', '监管', '审批',
+    '签证', '移民', '留学签证', '学生签证', '工签', 'PSW',
+    '招生', '录取', '申请', '申请季', '录取率', '截止',
+    'admissions', 'acceptance', 'application', 'deadline',
+    'visa', 'immigration', 'policy', 'regulation'
+]
+
 # Topic Keywords (Moved from news_fetcher.py to keep config together)
 TOPIC_KEYWORDS = {
     'ai': ['人工智能', 'AI', '机器学习', '深度学习', 'ChatGPT', 'DeepSeek', '大模型'],
@@ -100,16 +118,61 @@ TOPIC_KEYWORDS = {
     'uhomes': ['异乡好居', 'Uhomes']
 }
 
-# Negative Keywords (Filter out irrelevant content)
-# 增加更多噪音词，特别是针对国内 K12 和非相关教育领域的过滤
+# ========== Phase 1 扩展：关键词库 ==========
+
+# 1. 硬过滤词（必须命中，否则淘汰）
+HARD_FILTER_KEYWORDS = [
+    # 留学核心
+    'study abroad', 'international students', 'overseas education',
+    'visa', 'admissions', 'scholarship', 'tuition', 'immigration',
+    '留学', '签证', '招生', '申请', '移民', '奖学金',
+
+    # 政策核心
+    'policy', 'regulation', 'deadline', 'application portal',
+    '政策', '新规', '截止日期', '申请系统',
+
+    # 招生核心
+    'acceptance', 'offer', 'waitlist', 'rejection', 'decision',
+    '录取', 'offer', '候补名单', '拒信', '放榜',
+
+    # 数据核心
+    'report', 'statistics', 'survey', 'white paper', 'ranking',
+    '报告', '数据', '统计', '白皮书', '排名'
+]
+
+# 2. 负面关键词（一票否决）
 NEGATIVE_KEYWORDS = [
+    # K12教育（不需要）
     '早教', '幼教', '幼儿园', '托育', '保育',             # Early Education
     'K12', '中小学', '义务教育', '双减', '中考', '高考',   # Domestic K12
-    '考研', '公务员', '公考', '事业单位',                 # Domestic exams
     '少儿英语', '素质教育', '编程', '奥数', '学区房',      # Specific domestic sectors
     '职业教育', '职教', '技校', '职高',                   # Vocational (domestic)
-    '金宝贝', '美吉姆',                                  # Specific noise brands
-    '猿辅导', '作业帮', '火花思维', '编程猫',             # More domestic K12/Early ed
     '辅导机构', '补课', '培训班', '冬令营', '夏令营',      # General noise
     '研学', '营地教育', '研学旅行',                      # Specialized domestic noise
+
+    # 国内考试（不需要）
+    '考研', '公务员', '公考', '事业单位',
+
+    # ========== Phase 1 新增：金融类（噪音） ==========
+    '港股', 'A股', '证券', '基金', '煤炭', '钢铁', '房地产', '地产',
+    'IPO', '上市公司', '财报', '市值', '股价', '股东',
+
+    # ========== Phase 1 新增：娱乐类（噪音） ==========
+    '游戏', '电竞', '直播', '网红', '带货', '短视频', '主播',
+
+    # ========== Phase 1 新增：技术类（不相关） ==========
+    '漏洞', '渗透测试', 'SQL注入', 'CISO', '安全漏洞', '黑客',
+
+    # 特定品牌（噪音）
+    '金宝贝', '美吉姆', '猿辅导', '作业帮', '火花思维', '编程猫',
 ]
+
+# 3. 软过滤辅助词（加分项）
+PRIORITY_KEYWORDS = {
+    'policy': ['visa policy', 'immigration', 'regulation', '签证政策', '新规', '政策发布'],
+    'admissions': ['admissions', 'deadline', 'acceptance rate', '录取率', '申请截止'],
+    'data': ['report', 'statistics', 'survey', 'white paper', '报告', '数据', '白皮书'],
+    'official': ['official', 'government', 'ministry', '官方', '教育部', '移民局']
+}
+
+# ================================================
