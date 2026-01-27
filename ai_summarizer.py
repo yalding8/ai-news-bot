@@ -33,7 +33,7 @@ class AISummarizer:
                 model="deepseek-chat",
                 messages=[{
                     "role": "user",
-                    "content": f"""请总结以下{topic_info['name']}的真实新闻（共{len(news_list)}条）：
+                    "content": f"""请严格基于以下{topic_info['name']}的真实新闻生成摘要（共{len(news_list)}条）：
 
 {news_text}
 
@@ -43,7 +43,16 @@ class AISummarizer:
 3. 每条新闻用2-3句话详细概括，包含关键数据和具体信息
 4. 用emoji增强可读性（每条新闻前加相关emoji）
 5. 如果新闻是英文的，请翻译为中文
-6. 总字数控制在500字以内
+6. 标题必须与列表中的原始标题完全一致（逐字复制）
+7. 总字数控制在500字以内
+
+输出格式（必须严格一致）：
+1. 📰 标题：<原始标题>
+   摘要：<2-3句话>
+2. 📰 标题：<原始标题>
+   摘要：<2-3句话>
+3. 📰 标题：<原始标题>
+   摘要：<2-3句话>
 
 请开始总结（选择3条最重要的新闻）："""
                 }],
@@ -54,7 +63,7 @@ class AISummarizer:
             summary = response.choices[0].message.content
 
             # ✅ 新增: 内容验证
-            if not self._validate_summary(summary, news_list):
+            if not self._validate_summary(summary, news_list, min_title_matches=2):
                 logger.error("❌ AI总结验证失败，使用降级策略")
                 return self._fallback_summary(news_list, topic_info['name'])
 
@@ -83,7 +92,7 @@ class AISummarizer:
                 model="deepseek-chat",
                 messages=[{
                     "role": "user",
-                    "content": f"""请总结以下国际教育行业新闻（共{len(news_list)}条）：
+                    "content": f"""请严格基于以下国际教育行业新闻生成摘要（共{len(news_list)}条）：
 
 {news_text}
 
@@ -93,8 +102,17 @@ class AISummarizer:
 3. 每条新闻用2-3句话详细概括，包含关键数据、具体信息
 4. 用emoji增强可读性（每条新闻前加相关emoji）
 5. 如果新闻是英文的，请翻译为中文
-6. 按重要性排序
-7. 总字数控制在600字以内
+6. 标题必须与列表中的原始标题完全一致（逐字复制）
+7. 不要输出任何解释、免责声明、注释、括号说明或额外段落
+8. 按重要性排序
+9. 总字数控制在600字以内
+
+输出格式（必须严格一致，只允许下列条目）：
+1. 📰 标题：<原始标题>
+   摘要：<2-3句话>
+2. 📰 标题：<原始标题>
+   摘要：<2-3句话>
+...
 
 请开始总结："""
                 }],
@@ -105,7 +123,13 @@ class AISummarizer:
             summary = response.choices[0].message.content
 
             # ✅ 新增: 内容验证
-            if not self._validate_summary(summary, news_list, min_length=100):
+            required_title_matches = min(3, len(news_list))
+            if not self._validate_summary(
+                summary,
+                news_list,
+                min_length=120,
+                min_title_matches=required_title_matches
+            ):
                 logger.error("❌ 每日新闻总结验证失败，使用降级策略")
                 return self._fallback_summary(news_list, "国际教育新闻")
 
@@ -116,7 +140,13 @@ class AISummarizer:
             logger.error(f"❌ AI总结失败: {e}")
             return self._fallback_summary(news_list, "国际教育新闻")
 
-    def _validate_summary(self, summary: str, news_list: list, min_length: int = 50) -> bool:
+    def _validate_summary(
+        self,
+        summary: str,
+        news_list: list,
+        min_length: int = 50,
+        min_title_matches: int = 0
+    ) -> bool:
         """
         验证 AI 总结质量
 
@@ -133,13 +163,41 @@ class AISummarizer:
             logger.warning(f"⚠️ 总结过短: {len(summary) if summary else 0} 字符 (最低要求: {min_length})")
             return False
 
-        # 2. 检查是否包含错误提示
-        error_patterns = ['⚠️', 'AI总结失败', '无法', '出错', 'error', 'failed']
-        if any(pattern in summary for pattern in error_patterns):
-            logger.warning(f"⚠️ 总结包含错误提示")
+        # 2. 检查是否包含明显错误提示或多余说明
+        import re
+        error_patterns = [
+            r'^⚠️',
+            r'AI总结失败',
+            r'AI 总结失败',
+            r'总结失败',
+            r'服务暂时不可用',
+            r'无法连接',
+            r'请求失败',
+            r'接口错误',
+            r'API(?:调用)?失败',
+            r'error\s*:',
+            r'failed\s*:',
+            r'exception',
+            r'^\s*[（(]?\s*注[:：]',
+            r'免责声明',
+            r'仅从提供的',
+            r'根据您的要求'
+        ]
+        if any(re.search(pattern, summary, re.IGNORECASE | re.MULTILINE) for pattern in error_patterns):
+            logger.warning("⚠️ 总结包含错误提示")
             return False
 
-        # 3. 检查是否与原文相关 (使用简单的关键词匹配)
+        # 3. 检查是否包含足够的标题匹配（避免泛化总结）
+        if min_title_matches > 0:
+            titles = [n.get('title', '') for n in news_list if n.get('title')]
+            title_matches = sum(1 for t in titles if t and t in summary)
+            if title_matches < min_title_matches:
+                logger.warning(
+                    f"⚠️ 总结标题匹配不足 (匹配标题: {title_matches}/{min_title_matches})"
+                )
+                return False
+
+        # 4. 检查是否与原文相关 (使用简单的关键词匹配)
         # 提取原文标题中的关键词
         from collections import Counter
         import re

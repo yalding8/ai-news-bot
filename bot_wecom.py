@@ -19,6 +19,8 @@ from config import (
     ACTIVE_TOPICS_ENV, 
     TOPIC_ALIASES,
     SEND_WHEN_NO_NEW,
+    EDUCATION_RELEVANT_KEYWORDS,
+    EDUCATION_PRIORITY_KEYWORDS,
     get_logger
 )
 from news_fetcher import NewsFetcher, TOPIC_KEYWORDS
@@ -62,6 +64,33 @@ def parse_active_topics(raw: str) -> list:
             logger.warning(f"⚠️ 忽略未知主题: {key}")
     return topics
 
+def filter_education_relevant_news(news_list: list) -> list:
+    """保留国际教育强相关新闻，避免泛化资讯进入日报"""
+    if not news_list:
+        return []
+
+    filtered = []
+    for news in news_list:
+        title = (news.get('title') or '').lower()
+        description = (news.get('description') or '').lower()
+        content = f"{title} {description}"
+        if any(kw.lower() in content for kw in EDUCATION_RELEVANT_KEYWORDS):
+            filtered.append(news)
+    return filtered
+
+def rank_education_news(news_list: list) -> list:
+    """按政策/招生/签证相关度优先排序"""
+    def score_news(news: dict) -> int:
+        title = (news.get('title') or '').lower()
+        description = (news.get('description') or '').lower()
+        content = f"{title} {description}"
+        score = 0
+        score += sum(1 for kw in EDUCATION_RELEVANT_KEYWORDS if kw.lower() in content)
+        score += 2 * sum(1 for kw in EDUCATION_PRIORITY_KEYWORDS if kw.lower() in content)
+        return score
+
+    return sorted(news_list, key=score_news, reverse=True)
+
 def send_wecom_message(content: str, msgtype: str = "text") -> bool:
     """
     发送消息到企业微信群
@@ -94,7 +123,10 @@ def send_wecom_message(content: str, msgtype: str = "text") -> bool:
         }
 
     all_success = True
-    for webhook_url in WECOM_WEBHOOK_URLS:
+    unique_webhooks = list(dict.fromkeys(WECOM_WEBHOOK_URLS))
+    if len(unique_webhooks) < len(WECOM_WEBHOOK_URLS):
+        logger.info(f"🔁 去重Webhook: {len(WECOM_WEBHOOK_URLS)} -> {len(unique_webhooks)}")
+    for webhook_url in unique_webhooks:
         try:
             response = send_session.post(
                 webhook_url,
@@ -286,12 +318,25 @@ def send_daily_news(topics: list = None):
     logger.info(f"📊 合并去重后共 {len(all_news)} 条新闻")
 
     # 过滤已推送的新闻
-    new_news = filter_new_news('daily_digest', all_news)
-    if not new_news:
-        logger.warning("⚠️ 所有新闻均已推送过，取消发送日报")
-        return
+    if SEND_WHEN_NO_NEW:
+        logger.info("🟡 SEND_WHEN_NO_NEW 已启用，跳过去重过滤")
+        new_news = all_news
+    else:
+        new_news = filter_new_news('daily_digest', all_news)
+        if not new_news:
+            logger.warning("⚠️ 所有新闻均已推送过，取消发送日报")
+            return
 
     logger.info(f"📰 筛选出 {len(new_news)} 条未推送新闻")
+
+    # 进一步收敛到国际教育相关新闻，并按政策/招生/签证倾向排序
+    education_news = filter_education_relevant_news(new_news)
+    if education_news:
+        logger.info(f"🎯 国际教育相关过滤: {len(new_news)} -> {len(education_news)}")
+        new_news = rank_education_news(education_news)
+    else:
+        logger.warning("⚠️ 未筛到明显国际教育相关新闻，跳过本次日报")
+        return
 
     # AI总结（取前9条最重要的新闻）
     top_news = new_news[:9]
@@ -303,6 +348,17 @@ def send_daily_news(topics: list = None):
     # 标记为已推送
     mark_news_as_sent('daily_digest', top_news)
 
+    def extract_summary_titles(summary_text: str) -> list:
+        """从AI摘要中提取标题，保持顺序"""
+        import re
+
+        titles = []
+        for match in re.finditer(r'^\s*\d+\.\s*📰\s*标题：(.+)$', summary_text, re.MULTILINE):
+            title = match.group(1).strip()
+            if title and title not in titles:
+                titles.append(title)
+        return titles
+
     # 构造消息
     today_date = datetime.now().strftime("%Y年%m月%d日")
 
@@ -312,9 +368,28 @@ def send_daily_news(topics: list = None):
         "\n**🔗 精选来源**:"
     ]
 
-    # 添加前5条链接
-    for news in top_news[:5]:
-        message_parts.append(f"• [{news['title'][:40]}...]({news['url']})" if len(news['title']) > 40 else f"• [{news['title']}]({news['url']})")
+    # 添加摘要中出现的标题对应链接（确保来源与摘要一致）
+    summary_titles = extract_summary_titles(ai_summary)
+    title_to_news = {n['title']: n for n in top_news}
+    if summary_titles:
+        max_links = min(len(summary_titles), 6)
+        for title in summary_titles[:max_links]:
+            news = title_to_news.get(title)
+            if not news:
+                continue
+            message_parts.append(
+                f"• [{news['title'][:40]}...]({news['url']})"
+                if len(news['title']) > 40
+                else f"• [{news['title']}]({news['url']})"
+            )
+    else:
+        # 兜底：添加前5条链接
+        for news in top_news[:5]:
+            message_parts.append(
+                f"• [{news['title'][:40]}...]({news['url']})"
+                if len(news['title']) > 40
+                else f"• [{news['title']}]({news['url']})"
+            )
 
     # 广告区域
     message_parts.append("\n---")
