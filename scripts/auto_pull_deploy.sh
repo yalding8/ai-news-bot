@@ -146,10 +146,13 @@ case "$remote_url" in
   *)                repo_url="" ;;
 esac
 
+version_line="\`${short_before}\` → \`${short_after}\` · ${change_count} 个提交"
+# diff_line 作为独立一行用裸 URL：wecom 对裸 URL 会自动蓝色化 + 可点，
+# 而对 [text](url) 虽然可点但不显色，用户容易忽略（2026-04-24 反馈）
 if [ -n "$repo_url" ]; then
-  version_line="[\`${short_before}\` → \`${short_after}\`](${repo_url}/compare/${short_before}...${short_after}) · ${change_count} 个提交"
+  diff_line="\n**Diff**：${repo_url}/compare/${short_before}...${short_after}"
 else
-  version_line="\`${short_before}\` → \`${short_after}\` · ${change_count} 个提交"
+  diff_line=""
 fi
 
 # 构建 commit 列表（top 3 + 溢出提示）
@@ -176,7 +179,7 @@ now=$(date '+%Y-%m-%d %H:%M:%S')
 host=$(hostname 2>/dev/null || echo "?")
 
 notify_wecom "✅ ai-news-bot 部署成功" \
-  "\n**时间**：${now}\n**主机**：${host}\n**作者**：${top_author}\n**版本**：${version_line}\n\n**变更**：\n${commit_list}"
+  "\n**时间**：${now}\n**主机**：${host}\n**作者**：${top_author}\n**版本**：${version_line}${diff_line}\n\n**变更**：\n${commit_list}"
 
 # 成功时清空失败计数，给下一轮网络故障重新计数
 rm -f "$FAIL_COUNT_FILE" "$ALERT_SENT_FILE"
