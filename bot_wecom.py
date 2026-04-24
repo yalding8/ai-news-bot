@@ -334,60 +334,6 @@ def send_wecom_image(image_path: "Path") -> bool:
     return all_success
 
 
-def safe_truncate_markdown(message: str, max_bytes: int = 4000) -> str:
-    """
-    安全截断 Markdown 消息，保持格式完整
-
-    Args:
-        message: 原始消息
-        max_bytes: 最大字节数
-
-    Returns:
-        str: 截断后的消息
-    """
-    encoded = message.encode('utf-8')
-    if len(encoded) <= max_bytes:
-        return message
-
-    logger.warning(f"⚠️ 消息 {len(encoded)} 字节超过限制 {max_bytes}，进行智能截断")
-
-    # 定义 footer (确保 footer 能完整保留)
-    footer = "\n\n📌 *内容过长已截断，详细信息请查看原文链接*\n💡 *Powered By 异乡有你*"
-    footer_bytes = len(footer.encode('utf-8'))
-
-    # 按行分割
-    lines = message.split('\n')
-    truncated_lines = []
-    current_bytes = 0
-    safety_margin = footer_bytes + 50  # 额外留50字节安全边距
-
-    for line in lines:
-        line_bytes = len((line + '\n').encode('utf-8'))
-
-        # 检查是否会超出限制
-        if current_bytes + line_bytes + safety_margin > max_bytes:
-            logger.debug(f"🔍 在第 {len(truncated_lines)} 行停止（累计 {current_bytes} 字节）")
-            break
-
-        truncated_lines.append(line)
-        current_bytes += line_bytes
-
-    # 构造最终消息
-    result = '\n'.join(truncated_lines) + footer
-
-    # 最后验证 (防御性编程)
-    result_bytes = len(result.encode('utf-8'))
-    if result_bytes > max_bytes:
-        # 极端情况: 强制截断，但确保 UTF-8 完整性
-        logger.warning(f"⚠️ 截断后仍然超出 ({result_bytes} 字节)，进行二次截断")
-        safe_length = max_bytes - footer_bytes - 10
-        truncated_text = result.encode('utf-8')[:safe_length].decode('utf-8', errors='ignore').rstrip()
-        result = truncated_text + footer
-
-    logger.info(f"📊 截断完成: {len(result.encode('utf-8'))} 字节, 保留 {len(truncated_lines)}/{len(lines)} 行")
-    return result
-
-
 def send_daily_news(topics: list = None):
     """
     发送每日新闻汇总（合并所有主题为一条消息，去重）
@@ -447,15 +393,12 @@ def send_daily_news(topics: list = None):
         logger.warning("⚠️ 未筛到明显国际教育相关新闻，跳过本次日报")
         return
 
-    # AI总结（取前9条最重要的新闻）
+    # 取前 9 条做海报候选（hero + 4 items），剩余可作链接兜底
     top_news = new_news[:9]
     news_text = news_fetcher.format_news_for_ai(top_news)
 
-    logger.info("🤖 AI正在生成新闻摘要...")
-    ai_summary = ai_summarizer.summarize_daily_news(top_news, news_text)
-
     # 海报：AI 结构化摘要 → 渲染 PNG → 先发图片
-    # 失败不阻塞主流程（后面的 markdown 仍会发）
+    # 失败不阻塞主流程（后面的链接文本仍会发）
     try:
         poster_items = ai_summarizer.summarize_for_poster(top_news, news_text)
         if poster_items:
@@ -468,76 +411,38 @@ def send_daily_news(topics: list = None):
             logger.info(f"🎨 海报已生成: {final_path.name} ({final_path.stat().st_size / 1024:.1f} KB)")
             send_wecom_image(final_path)
         else:
-            logger.warning("⚠️ 海报结构化摘要为空，跳过海报，仅发文本")
+            logger.warning("⚠️ 海报结构化摘要为空，仅发链接文本")
     except Exception as e:
         logger.error(f"❌ 海报流程异常（不影响文本发送）: {e}")
 
     # 标记为已推送
     mark_news_as_sent('daily_digest', top_news)
 
-    def extract_summary_titles(summary_text: str) -> list:
-        """从AI摘要中提取标题，保持顺序"""
-        import re
-
-        titles = []
-        for match in re.finditer(r'^\s*\d+\.\s*📰\s*标题：(.+)$', summary_text, re.MULTILINE):
-            title = match.group(1).strip()
-            if title and title not in titles:
-                titles.append(title)
-        return titles
-
-    # 构造消息
+    # 文本（极简版）：海报补充 —— 仅来源链接 + 小程序入口。
+    # 海报已承载 AI 摘要与 punch line，避免文本重复淹没阅读体验。
     today_date = datetime.now().strftime("%Y年%m月%d日")
-
     message_parts = [
-        f"📅 **异乡早咖啡 - {today_date}**\n",
-        ai_summary,
-        "\n**🔗 精选来源**:"
+        f"📅 **异乡早咖啡 · {today_date}** · 更多细节见上方海报\n",
+        "**🔗 来源链接**",
     ]
+    for news in top_news[:6]:
+        title = news['title']
+        short = title[:36] + "..." if len(title) > 36 else title
+        message_parts.append(f"• [{short}]({news['url']})")
 
-    # 添加摘要中出现的标题对应链接（确保来源与摘要一致）
-    summary_titles = extract_summary_titles(ai_summary)
-    title_to_news = {n['title']: n for n in top_news}
-    if summary_titles:
-        max_links = min(len(summary_titles), 6)
-        for title in summary_titles[:max_links]:
-            news = title_to_news.get(title)
-            if not news:
-                continue
-            message_parts.append(
-                f"• [{news['title'][:40]}...]({news['url']})"
-                if len(news['title']) > 40
-                else f"• [{news['title']}]({news['url']})"
-            )
-    else:
-        # 兜底：添加前5条链接
-        for news in top_news[:5]:
-            message_parts.append(
-                f"• [{news['title'][:40]}...]({news['url']})"
-                if len(news['title']) > 40
-                else f"• [{news['title']}]({news['url']})"
-            )
-
-    # 广告区域
     message_parts.append("\n---")
-    message_parts.append("🏠 **异乡好居** - 留学生海外的家 [#小程序://异乡好居/vvS67rZGtrvbQIn]")
-    message_parts.append("💰 **异乡缴费** - 比一比更省钱 [#小程序://异乡缴费/8d32ABZvjBHh1vd]")
-    message_parts.append("\n💡 *Powered By 异乡有你，AI驱动 • 实时聚合全球国际教育资讯*")
+    message_parts.append("🏠 **异乡好居** [#小程序://异乡好居/vvS67rZGtrvbQIn] | 💰 **异乡缴费** [#小程序://异乡缴费/8d32ABZvjBHh1vd]")
+    message_parts.append("💡 *AI 辅助生成 · 异乡早咖啡*")
 
     final_message = "\n".join(message_parts)
     byte_length = len(final_message.encode('utf-8'))
-    logger.info(f"📊 消息长度: {len(final_message)} 字符, {byte_length} 字节")
+    logger.info(f"📊 文本长度: {len(final_message)} 字符, {byte_length} 字节")
 
-    # ✅ 改进: 使用安全截断函数，保持 Markdown 格式完整
-    MAX_BYTES = 4000  # 企业微信 markdown 限制 4096 字节
-    final_message = safe_truncate_markdown(final_message, MAX_BYTES)
-
-    # 发送消息
-    logger.info("📤 正在发送新闻日报...")
+    logger.info("📤 正在发送来源链接...")
     if send_wecom_message(final_message, msgtype="markdown"):
-        logger.info("✅ 日报发送成功")
+        logger.info("✅ 链接文本发送成功")
     else:
-        logger.error("❌ 日报发送失败")
+        logger.error("❌ 链接文本发送失败")
 
 
 def fetch_topic_news_raw(topic_key: str) -> list:
