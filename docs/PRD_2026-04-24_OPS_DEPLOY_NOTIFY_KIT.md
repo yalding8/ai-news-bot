@@ -2,15 +2,25 @@
 title: 运维部署通知标准化工具包（ops-deploy-kit）PRD
 date: 2026-04-24
 author: neilding
-version: 0.2
-status: Draft v0.2（已针对 Gate-1 v0.1 反馈补强，等待复评）
-reviewers: TBD（见 §11 Gate-1 评审准备）
-prior_review: docs/AUDIT_2026-04-24_PRD_OPS_KIT_GATE1.md（v0.1 均分 6.3/10 不通过）
+version: 0.3
+status: Draft v0.3（针对 Gate-1 v0.2 复评 7.9/10 的 8 项残留做补强，目标 ≥ 8.5）
+reviewers: TBD
+prior_reviews:
+  - docs/AUDIT_2026-04-24_PRD_OPS_KIT_GATE1.md    (v0.1: 6.3/10 不通过)
+  - docs/AUDIT_2026-04-24_PRD_OPS_KIT_GATE1_V2.md (v0.2: 7.9/10 条件通过)
 ---
 
+> **v0.3 改动摘要**（v0.2 → v0.3）
+>
+> 针对 v0.2 复评残留的 🟡 中项 + 🟢 低项做收尾补强：
+> - 新增 §5.9 upgrade-kit.sh 设计（A6）、§5.10 凭证生命周期（S4）、§14 附录 C 离线接入（A5）、§15 附录 D 已知限制（T4）
+> - §5.6 末尾加版本兼容条款（T2）
+> - §7 Phase 2 按项目细化工作量（O5）
+> - §12.5 L3 加跨发行版强制要求（T5）、§12.4 加 I6 bootstrap 回滚测试（T3）、§12.4 加 I7 log 脱敏断言（S5）
+>
 > **v0.2 改动摘要**（v0.1 → v0.2）
 >
-> 本次修订针对 `AUDIT_2026-04-24_PRD_OPS_KIT_GATE1.md` 指出的 3 🔴 必须项 + 4 🟡 中项：
+> 针对 `AUDIT_2026-04-24_PRD_OPS_KIT_GATE1.md` 指出的 3 🔴 必须项 + 4 🟡 中项：
 > - 新增 §1.3 需求调研（C1）、§5.6 版本化策略（A3）、§5.7 供应链保护（S1）、§5.8 自监控心跳（S2）、§12 测试方案（T1）
 > - 修正 §2.1 / §6 "3-10 分钟" 矛盾（A1）、§5.1 / §2.2 disk_alert 前后矛盾（A2）、§7 补入脚本拆分工作量（A4）、§8 R5 fallback（O1）
 
@@ -314,7 +324,11 @@ curl -sL https://raw.githubusercontent.com/neilding/ops-deploy-kit/main/bootstra
 - 升级：`./scripts/upgrade-kit.sh v1.2.3`（下载该 tag → 比对 SHA → 原子替换 → 更新 .kit-version）
 - 回滚：`./scripts/upgrade-kit.sh v1.1.0`（逆向操作即可）
 
-**版本共存**：不支持同一项目使用多个 Kit 版本；不同项目之间版本可完全独立。
+**版本共存**（v0.3 补强 T2）：
+- **同一项目**：不支持并存多版本。任何时刻 `scripts/.kit-version` 只记录一个 commit SHA
+- **不同项目**：完全独立，项目 A 用 v0.5、项目 B 用 v1.2、项目 C 用 v2.0 互不影响（Kit 无全局状态）
+- **MAJOR 跨版本兼容性**：v1.x 项目升级到 v2.x 必须走"迁移指南"（Kit 每个 MAJOR 发版同步发迁移文档）；不支持 skip（不能 v1.x 直接跳 v3.x，必须 v1→v2→v3 逐版迁移）
+- **测试保障**：CI 在 Kit 发新版时对 v(N-1) 和 v(N) 跑一遍完整 E2E，确保升级路径不破坏
 
 ### 5.7 供应链保护（v0.2 新增，补强 S1）
 
@@ -394,6 +408,97 @@ less scripts/auto_pull_deploy.sh
 
 **代价**：每个项目多一条 cron 行；群里每天多 N 条消息。相比"通知链路静默失效未知时长"的代价，完全可接受。
 
+### 5.9 `upgrade-kit.sh` 详细设计（v0.3 新增，补强 A6）
+
+Kit 升级的具体协议 —— 由 Phase 1 P1.9 交付。
+
+#### 5.9.1 目录结构
+
+```
+<app-dir>/scripts/
+├── .kit-version              当前 pin 版本元数据（见 §5.6）
+├── .kit-backup/              每次升级前自动备份旧版本
+│   └── <timestamp>/          例：2026-04-24_180301/
+│       ├── wecom_notify.sh
+│       ├── auto_pull_deploy.sh
+│       ├── heartbeat.sh
+│       └── .kit-version
+└── upgrade-kit.sh            升级入口脚本（v0.3 新增）
+```
+
+#### 5.9.2 命令接口
+
+```bash
+./scripts/upgrade-kit.sh <target-version>    # 升级到指定版本（tag 或 commit SHA）
+./scripts/upgrade-kit.sh --dry-run v1.2.3    # 预览不实际改动
+./scripts/upgrade-kit.sh --rollback          # 回滚到最近一次升级前的状态
+./scripts/upgrade-kit.sh --list              # 列出本地已备份的所有版本
+./scripts/upgrade-kit.sh --current           # 显示当前版本
+```
+
+#### 5.9.3 升级执行流程（原子性保证）
+
+1. **预检**：`$target-version` 存在于远端？
+2. **下载到 tempdir**：`git clone --depth=1 --branch=$target $KIT_REMOTE /tmp/kit-$target`
+3. **校验 checksum**：读取 target 版本 README 里的 SHA256，和 tempdir 里的文件比对。失败立即 abort，清理 tempdir
+4. **快照现有版本**：`cp -r scripts/ scripts/.kit-backup/$(date +%Y-%m-%d_%H%M%S)/`
+5. **原子替换**：`mv` 每个脚本（`mv` 在同 FS 是原子操作）
+   - 严格列表，只替换 Kit 拥有的文件（`wecom_notify.sh`, `auto_pull_deploy.sh`, `heartbeat.sh`, `upgrade-kit.sh`）
+   - **不碰** `post_pull.sh`、`.deploy.env`（项目自己的）
+6. **更新 .kit-version** → 新 commit SHA + tag name + timestamp
+7. **冒烟验证**：`bash -n` 新脚本（语法正确）+ `./wecom_notify.sh "🔧 Kit 已升级到 $target" "..."` 推一条验证消息
+8. **成功 ≈ 清理 tempdir**；**失败 ≈ 自动 `--rollback`**
+
+#### 5.9.4 `--rollback` 逻辑
+
+- 找 `.kit-backup/` 下最新目录
+- 把其中文件原子 `mv` 回 `scripts/`
+- 恢复 `.kit-version` 到备份版本
+- 推一条通知：`↩️ Kit 已回滚到 vX.Y.Z`
+
+**失败场景**：如果 tempdir 下载一半断网，脚本 trap EXIT 清理 tempdir 保证幂等；如果 mv 操作中断（极低概率），备份目录还在，人工 rollback 仍可恢复。
+
+#### 5.9.5 安全性
+
+- `upgrade-kit.sh` 本身也遵循供应链保护：target 版本必须先 checksum 验证才会被 mv 到生产
+- 不允许 `main` 分支直升（防止 HEAD 不稳定）—— 强制传 tag 或明确 commit SHA
+
+#### 5.9.6 测试覆盖
+
+在 §12 测试方案里：
+- L1 U6-U9：upgrade-kit.sh 的 4 个场景（正常升级 / checksum 失败 / rollback / dry-run）
+- L2 I8：真实 Kit v0.1 → v0.2 升级场景 + 失败回滚
+
+### 5.10 凭证生命周期（v0.3 新增，补强 S4）
+
+`.deploy.env` 里的 `WECOM_BOT_WEBHOOK_URL` 是长期凭证。建议如下生命周期管理：
+
+#### 5.10.1 轮换周期
+
+- **建议周期**：每 6 个月主动轮换一次
+- **强制轮换触发**：有任何下列事件时立即换
+  - ops 账号疑似被攻破
+  - 某项目服务器被淘汰 / 换手
+  - 运维群结构调整（机器人更换）
+
+#### 5.10.2 轮换流程
+
+1. 企微群设置 → 删除旧机器人 → 添加新机器人 → 复制新 URL
+2. 在 Kit 仓库的 README 或运维群置顶留一份"当前 webhook 活跃项目"清单
+3. 遍历清单上每台机器：`nano /home/ops/<project>/.deploy.env` → 替换 URL → `chmod 600`
+4. 各项目触发一次心跳（`./scripts/heartbeat.sh`）验证新 URL 工作
+5. 全部验证通过后，旧机器人才能删除
+
+#### 5.10.3 记录凭证创建时间
+
+`.deploy.env` 模板增加一行注释：
+```
+# WECOM_BOT_WEBHOOK_URL 创建日期：2026-04-24（建议 2026-10-24 前轮换）
+WECOM_BOT_WEBHOOK_URL=https://qyapi.weixin.qq.com/...
+```
+
+轮换时在 heartbeat.sh 里加一行检查：如果 `.deploy.env` 里的创建日期 > 6 个月，在心跳消息末尾加"⏰ webhook 已超 6 个月未轮换"的提示。
+
 ---
 
 ## 6. 接入流程（生产 10 分钟，含阅读）
@@ -469,16 +574,28 @@ curl -sL https://raw.githubusercontent.com/neilding/ops-deploy-kit/main/bootstra
 | **P1.6 从 ai-news-bot 脚本拆分通用/特有部分**（v0.2 新增，补强 A4） | pip/playwright 剥到 `post_pull.sh` 示例 | 1d |
 | **P1.7 编写心跳脚本 + SLA 文档**（v0.2 新增，补强 S2） | `heartbeat.sh` + README SLA 章节 | 0.5d |
 | **P1.8 §12 测试方案中 L1 + L2**（v0.2 新增，补强 T1） | bats-core 单测 + docker 集测 | 1.5d |
-| **Phase 1 小计** | | **6-7 d**（v0.1 低估为 3-4d，v0.2 修正） |
+| **P1.9 编写 upgrade-kit.sh**（v0.3 新增，补强 A6） | 见 §5.9 详设，含 dry-run/rollback/冒烟验证 | 0.5d |
+| **Phase 1 小计** | | **7-8 d**（v0.3 再上修） |
 
-### Phase 2：迁移存量项目（1-2 天 × 项目数）
+### Phase 2：迁移存量项目（v0.3 细化，补强 O5）
 
-优先级：
-1. ai-news-bot（dogfooding，最熟）
-2. uhomes-workorder（修复 `/opt/dootask/.deploy.env` 缺失导致通知早失效的问题）
-3. aifx、dianping 等（按依赖度排）
+不同项目复杂度差异很大，按具体工作量估算：
 
-每个迁移：**保留旧脚本作 `.legacy` 备份**，切换后观察一周，稳定再删。
+| 项目 | 当前状态 | 迁移工作量 [AI 估算] | 关键风险 |
+|---|---|---|---|
+| **ai-news-bot** | Kit 的 dogfood，已有新脚本 | **1d**（拆 post_pull.sh + L4 回归对比） | 迁移期间可能中断日报 → 选周末执行 |
+| **uhomes-workorder** | 有 deploy-notify.sh + rollback tag + dry-run + rsync 部署 | **3-5d**（Kit 无 rsync 能力，需分 phase 1 支持 rsync hook 或保留原脚本只替换通知） | 复杂度远超 ai-news-bot。可能需**先扩 Kit 能力再迁** |
+| **aifx** | 已有 auto_pull_deploy.sh 雏形（和 ai-news-bot 相似） | **1d**（模式相同） | 低 |
+| **dianping / uhomes-inventory-ai / xhs-monitor** | 无 | **0.5d × N**（从零接入） | 低 |
+
+**Phase 2 总工作量**：3 + uhomes-workorder(3-5) + 0.5×3 = **7.5-9.5 d** [AI 估算]（v0.1/v0.2 笼统"每项目 1-2d"严重低估 uhomes-workorder）
+
+**迁移策略**：
+- **保留旧脚本作 `.legacy` 备份**，切换后观察一周，稳定再删
+- **先 ai-news-bot → 再 aifx**（相似 pattern，低风险验证）
+- **uhomes-workorder 先解耦再迁**：Kit 暂只替换其通知模块，保留原部署脚本；等 Kit v1.1 支持 rsync hook 后再全迁
+
+
 
 ### Phase 3：扩展能力（未来，按需）
 
@@ -626,6 +743,9 @@ sudo cp /tmp/ops-deploy-<project>.cron /etc/cron.d/<project>
 | I3 | post_pull 主动失败 | mock-wecom 收到失败通知 + deploy.log 记录退出码 |
 | I4 | 连续 5 次 git fetch 失败 | mock-wecom 第 5 次才收到 1 条"连续失败 5 次"告警 |
 | I5 | heartbeat.sh 触发 | mock-wecom 收到 💓 心跳消息 |
+| **I6** (v0.3 新增，T3) | bootstrap 中途网络中断 | `scripts/` 保持干净（无半损坏文件）；再跑一次 bootstrap 幂等成功 |
+| **I7** (v0.3 新增，S5) | wecom_notify.sh 遇 http 错误，stderr 写入 deploy.log | log 中**不含** `key=` / `token=` 等敏感字段（测试断言 grep 为空） |
+| **I8** (v0.3 新增，A6) | upgrade-kit.sh 从 v0.1 升到 v0.2，checksum 失败 | 自动触发 `--rollback`，scripts/ 回到 v0.1 状态，推告警通知 |
 
 ### 12.5 L3 E2E 测试（真实环境）
 
@@ -639,6 +759,11 @@ sudo cp /tmp/ops-deploy-<project>.cron /etc/cron.d/<project>
    - Diff 链接点击能跳 GitHub compare
    - 心跳消息每天 10:00 准时到达（至少观察 3 天）
    - 通知样式在企微 PC / 移动端都正常
+
+**v0.3 补强 T5：跨发行版强制要求**：
+- **最低要求**：Ubuntu 22.04 LTS + Debian 12 各跑 1 次 E2E，产出各自 log
+- **推荐加强**：加一遍 CentOS Stream 9（或 Rocky Linux 9），确认 bash 4.x / systemd 差异不炸
+- **Alpine 不保证**：musl libc 和 busybox 的差异超出 Kit 承诺（见 §15 附录 D 已知限制）
 
 ### 12.6 L4 回归测试（ai-news-bot 迁移）
 
@@ -692,6 +817,28 @@ sudo cp /tmp/ops-deploy-<project>.cron /etc/cron.d/<project>
 - C2 Kit 维护成本更精细估算 —— 已在 §1.4 修正为 "3-5h/月"
 - C3 机会成本讨论 —— 已在用户确认"假设 A"后过时
 
+### v0.2 → v0.3 修正（基于 AUDIT v2 的 8 项残留）
+
+| # | v0.2 问题 | v0.3 修正 | 修正位置 | 状态 |
+|---|---|---|---|---|
+| A5 | bootstrap 离线路径未述 | 加附录 C 含 tar.gz + SHA256SUMS 全流程 | 附录 C | ✅ 已修 |
+| A6 | `upgrade-kit.sh` 未定义 | 加 §5.9 完整设计（dry-run/rollback/原子替换/冒烟验证）+ P1.9 | §5.9、§7 P1.9、附录 B | ✅ 已修 |
+| S4 | webhook 轮换流程空缺 | 加 §5.10 凭证生命周期 + heartbeat 6 月提醒 | §5.10 | ✅ 已修 |
+| S5 | log 脱敏规则 | §12.4 加 I7 集成测试断言 | §12.4 | ✅ 已修 |
+| T2 | 版本兼容矩阵 | §5.6 末尾加"版本共存"明确条款 + MAJOR 跨版迁移约束 | §5.6 | ✅ 已修 |
+| T3 | bootstrap 回滚测试 | §12.4 加 I6 集成测试 case | §12.4 | ✅ 已修 |
+| T4 | NFS flock 兼容 | 附录 D 已知限制列出 + 建议（本地 FS / PID 文件替代） | 附录 D | ✅ 已修（列为已知限制，不强保证） |
+| T5 | 跨发行版测试 | §12.5 L3 加强制要求：Ubuntu 22.04 + Debian 12 + 推荐 Rocky 9 | §12.5 | ✅ 已修 |
+| O5 | uhomes-workorder 迁移复杂度 | Phase 2 按项目细化，uhomes-workorder 单独 3-5d | §7 Phase 2 | ✅ 已修 |
+
+### v0.3 未修项（🟢 继续延后）
+
+以下属于"定义清晰的 future work"，不阻塞 Phase 1 编码：
+
+- S3（`.deploy.env` 严格解析）：除非出现内部威胁，defense in depth 可延后
+- O2（logrotate 自动配置）：等项目接入 6+ 个后再评估日志体量
+- Phase 3 扩展（`disk_alert.sh` / `health_check.sh`）：Phase 1/2 稳定后按需求重启设计
+
 
 
 ---
@@ -734,6 +881,85 @@ sudo cp /tmp/ops-deploy-<project>.cron /etc/cron.d/<project>
 - 恢复成功时清空计数器
 
 阈值可通过 `NET_FAIL_THRESHOLD` 环境变量覆盖。
+
+---
+
+## 附录 B：Kit 升级操作手册（对应 §5.9）
+
+（Phase 1 P1.9 交付后将此附录独立迁到 Kit README。此处作为 PRD 一部分保留作为引用。）
+
+```bash
+# 查看当前版本
+cat scripts/.kit-version
+
+# 列出本机已备份的历史版本
+./scripts/upgrade-kit.sh --list
+
+# 预览将要升级的差异（不实际改动）
+./scripts/upgrade-kit.sh --dry-run v1.2.3
+
+# 正式升级（自动备份 + 原子替换 + 冒烟验证 + 失败回滚）
+./scripts/upgrade-kit.sh v1.2.3
+
+# 回滚到最近一次升级前状态
+./scripts/upgrade-kit.sh --rollback
+```
+
+升级过程中有 `.kit-backup/<timestamp>/` 保留旧版本，保留期 30 天自动清理。
+
+---
+
+## 附录 C：离线接入方式（v0.3 新增，补强 A5）
+
+适用场景：目标服务器无 GitHub 访问权（内网隔离 / 国内网络抖动 / 防火墙限制）。
+
+### C.1 离线 tar.gz 下载
+
+每次 Kit Release 同时在 GitHub Release 页发布 `ops-deploy-kit-v1.2.3.tar.gz`，含：
+- `bootstrap.sh` / `scripts/*.sh` / `templates/*` / `docs/*`
+- `SHA256SUMS` 文件（一次性校验所有文件）
+
+用户在任意一台能上 GitHub 的机器（比如自己的 Mac）下载，然后通过 JumpServer 文件管理或 SFTP 上传到目标服务器的 `/tmp/`。
+
+### C.2 离线接入命令序列
+
+```bash
+# 目标服务器上
+cd /tmp
+tar -xzf ops-deploy-kit-v1.2.3.tar.gz
+cd ops-deploy-kit-v1.2.3
+
+# 校验全部文件的 SHA256
+sha256sum --check SHA256SUMS
+
+# 执行 bootstrap
+./bootstrap.sh <project-name> /home/ops/<project-name>
+```
+
+### C.3 离线升级
+
+`upgrade-kit.sh` 新增 `--local-tarball <path>` 参数：
+```bash
+./scripts/upgrade-kit.sh --local-tarball /tmp/ops-deploy-kit-v1.2.3.tar.gz
+```
+跳过 git clone，直接从本地 tar 解压 + checksum 校验 + 替换。
+
+---
+
+## 附录 D：已知限制（v0.3 新增，补强 T4）
+
+Kit **不保证**以下场景能正常工作，遇到时降级到手工运维：
+
+| 场景 | 原因 | 建议 |
+|---|---|---|
+| NFS / SMB / 其他网络文件系统 | `flock` 在部分实现上语义不同；可能失败或卡住 | 将 `$APP_DIR` 放在本地 FS；若必须用网络 FS，禁用 flock 改用 PID 文件 |
+| Alpine Linux / BusyBox | 部分 bash 语法 / date 选项 / find 选项差异 | 不保证。想在 Alpine 跑自行定制 |
+| bash < 4.0（CentOS 6 及以下）| `${var:0:8}` 等现代语法要 4.0+ | 升级 bash 或操作系统 |
+| SELinux 严格模式 | 可能阻挡脚本写 `/etc/cron.d/` 等路径 | 管理员设 exception 或走 §8.1 路径 B |
+| 无 `curl`（极简容器） | bootstrap 依赖 curl | 手工下载 tar.gz 离线安装（附录 C） |
+| 企微自建应用 API（不是群机器人） | Kit 只支持群机器人 webhook | 不在本 PRD 范围；可另做扩展 |
+
+遇到已知限制导致失败时，Kit 尽量输出清晰的 stderr 提示（不要静默挂）。
 
 ---
 
