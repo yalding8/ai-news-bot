@@ -147,10 +147,13 @@ case "$remote_url" in
 esac
 
 version_line="\`${short_before}\` → \`${short_after}\` · ${change_count} 个提交"
-# diff_line 作为独立一行用裸 URL：wecom 对裸 URL 会自动蓝色化 + 可点，
-# 而对 [text](url) 虽然可点但不显色，用户容易忽略（2026-04-24 反馈）
+# diff_line: wecom 群机器人 markdown 的限制发现（2026-04-24 两轮反馈）：
+#   - 裸 URL：既不显色也不可点（wecom markdown 不做 URL auto-link）
+#   - [text](url)：能点击但不显色（和普通文字视觉一致）
+# 折中：markdown link 提供点击能力，emoji (🔗) + 文字提示 (点击查看 ↗)
+# 作为"这是链接"的视觉 affordance，用户看到会尝试点
 if [ -n "$repo_url" ]; then
-  diff_line="\n**Diff**：${repo_url}/compare/${short_before}...${short_after}"
+  diff_line="\n**Diff**：[🔗 点击查看 diff ↗](${repo_url}/compare/${short_before}...${short_after})"
 else
   diff_line=""
 fi
