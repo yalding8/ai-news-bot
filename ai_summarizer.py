@@ -1,5 +1,5 @@
 from openai import OpenAI
-from config import DEEPSEEK_API_KEY, NEWS_TOPICS, get_logger
+from config import DEEPSEEK_API_KEY, LLM_BASE_URL, LLM_MODEL, NEWS_TOPICS, get_logger
 
 logger = get_logger(__name__)
 
@@ -7,8 +7,9 @@ class AISummarizer:
     def __init__(self):
         self.client = OpenAI(
             api_key=DEEPSEEK_API_KEY,
-            base_url="https://api.deepseek.com"
+            base_url=LLM_BASE_URL
         )
+        self.model = LLM_MODEL
 
     def summarize_news(self, topic_key: str, news_list: list, news_text: str) -> str:
         """
@@ -30,7 +31,7 @@ class AISummarizer:
 
         try:
             response = self.client.chat.completions.create(
-                model="deepseek-chat",
+                model=self.model,
                 messages=[{
                     "role": "user",
                     "content": f"""请严格基于以下{topic_info['name']}的真实新闻生成摘要（共{len(news_list)}条）：
@@ -89,7 +90,7 @@ class AISummarizer:
 
         try:
             response = self.client.chat.completions.create(
-                model="deepseek-chat",
+                model=self.model,
                 messages=[{
                     "role": "user",
                     "content": f"""请严格基于以下国际教育行业新闻生成摘要（共{len(news_list)}条）：
