@@ -2,9 +2,17 @@
 title: 运维部署通知标准化工具包（ops-deploy-kit）PRD
 date: 2026-04-24
 author: neilding
-status: Draft（等待 Gate-1 评审）
+version: 0.2
+status: Draft v0.2（已针对 Gate-1 v0.1 反馈补强，等待复评）
 reviewers: TBD（见 §11 Gate-1 评审准备）
+prior_review: docs/AUDIT_2026-04-24_PRD_OPS_KIT_GATE1.md（v0.1 均分 6.3/10 不通过）
 ---
+
+> **v0.2 改动摘要**（v0.1 → v0.2）
+>
+> 本次修订针对 `AUDIT_2026-04-24_PRD_OPS_KIT_GATE1.md` 指出的 3 🔴 必须项 + 4 🟡 中项：
+> - 新增 §1.3 需求调研（C1）、§5.6 版本化策略（A3）、§5.7 供应链保护（S1）、§5.8 自监控心跳（S2）、§12 测试方案（T1）
+> - 修正 §2.1 / §6 "3-10 分钟" 矛盾（A1）、§5.1 / §2.2 disk_alert 前后矛盾（A2）、§7 补入脚本拆分工作量（A4）、§8 R5 fallback（O1）
 
 # PRD：运维部署通知标准化工具包（ops-deploy-kit）
 
@@ -44,13 +52,34 @@ reviewers: TBD（见 §11 Gate-1 评审准备）
 
 把这套**样板化**，新项目 10 分钟内接入，统一踩坑一次以后不再重踩。
 
+### 1.4 需求调研：预期受益项目（v0.2 新增，补强 C1）
+
+用户已确认"未来会有很多项目需要"（2026-04-24 session）。基于 `~/Projects/` 目录当前
+存在的项目做初筛（待项目负责人 review 确认）：
+
+| 项目 | 类型 | 当前通知现状 | Kit 接入意愿 |
+|---|---|---|---|
+| ai-news-bot | Python · 爬虫+推送 | 已接入（本 session） | 🔴 高（dogfood 样板） |
+| uhomes-workorder | PHP · Laravel 工单 | 已有但因 `.deploy.env` 缺失失效 | 🔴 高（一次性修复通知 + 迁移） |
+| aifx | Python · 汇率数据 | 已有 `auto_pull_deploy.sh` 雏形 | 🟡 中（现有脚本可改造） |
+| dianping | Python · 数据采集 | 无 | 🟡 中 |
+| uhomes-inventory-ai | Python · ML 库存 | 待评估 | 🟡 中 |
+| xhs-monitor | Python · 监控 | 无 | 🟡 中 |
+| up-dailyreport / 其他 | 多样 | 多数无 | 🟢 按需 |
+
+**Phase 1 直接受益估算**：3 个（ai-news-bot + uhomes-workorder + aifx）
+**Phase 2 潜在接入**：4-5 个
+**总计目标**：6 个月内接入 6+ 个项目
+
+**ROI 重算**：若有 6 个项目受益 × 3h 节省（PRD v0.1 的 2-3h 估算偏保守，加上踩坑） = **18 h 净节省**；Kit 首版实施 5d + 维护 3-5h/月 × 6 个月 ≈ 25-35h。**第 6-12 个月之间回本**（而非 v0.1 乐观预期的 3 个月）。
+
 ---
 
 ## 2. 目标 / 非目标
 
 ### 2.1 目标（本 PRD 范围）
 
-✅ **G1**：提供单一"运维部署通知"脚本包，让任意 Python/Node/其他项目 10 分钟内接入
+✅ **G1**：提供单一"运维部署通知"脚本包，让任意 Python/Node/其他项目**在 10 分钟内接入完毕**（v0.1 的 "3 分钟" 不含 README 阅读时间，不切实际，v0.2 统一口径为 10 分钟）
 ✅ **G2**：统一 wecom 群机器人通知格式（成功/失败/告警），跨项目视觉一致
 ✅ **G3**：统一敏感凭证管理约定（`.deploy.env` 位置 + 权限 + 加载顺序）
 ✅ **G4**：把今天踩到的所有 wecom markdown 限制 / bash 时差规律 / 失败限频规则**一次性文档化**
@@ -63,6 +92,11 @@ reviewers: TBD（见 §11 Gate-1 评审准备）
 ❌ **不做多通道路由**（短信、邮件、企微应用 API 等重服务——未来需求再说）
 ❌ **不做通知的内容聚合 / 去重**（每次 deploy 一条消息，简单可靠）
 ❌ **不覆盖非部署场景**的通知（业务告警、用户通知等由各项目自行实现）
+
+**未来扩展点（不在本 PRD 范围，但仓库预留结构位）**：
+- `disk_alert.sh` —— 磁盘空间告警（Phase 3 可能引入）
+- `health_check.sh` —— HTTP 健康检查（Phase 3 可能引入）
+- 这些**不是本 PRD 的交付物**，仅在 §5.1 仓库结构说明时提及
 
 ### 2.3 可逆性评分
 
@@ -132,7 +166,7 @@ github.com/neilding/ops-deploy-kit/
 ├── scripts/
 │   ├── wecom_notify.sh        通用 curl 包装器
 │   ├── auto_pull_deploy.sh    标准 git-pull 自动部署模板
-│   └── disk_alert.sh          未来加：磁盘空间告警（占位）
+│   └── (Phase 3 扩展位：disk_alert.sh / health_check.sh 等)
 ├── templates/
 │   ├── .deploy.env.example    配置模板
 │   └── crontab.example        cron 配置模板
@@ -245,28 +279,156 @@ curl -sL https://raw.githubusercontent.com/neilding/ops-deploy-kit/main/bootstra
 3. **Kit 无 Python/Node 依赖**，纯 bash + curl + git，跨语言项目通吃
 4. **向后兼容承诺**：vMAJOR 版本号内 API 不破坏性变更
 
----
+### 5.6 版本化策略（v0.2 新增，补强 A3）
 
-## 6. 接入流程（新项目 3 分钟）
+**版本号**：语义化 `vMAJOR.MINOR.PATCH`（遵循 SemVer）
+
+- **MAJOR** 破坏性：改 `post_pull.sh` 调用协议、改 `.deploy.env` 变量名、改脚本文件结构
+- **MINOR** 新增：新增脚本（如 `heartbeat.sh`）、新增可选 env 变量
+- **PATCH** 修复：bugfix、文档更新、内部重构（对接入方零感知）
+
+**发布流程**：
+
+1. 改动合并到 `main` 分支
+2. 在 dogfood 项目（ai-news-bot）试跑 3 天
+3. 打 annotated tag：`git tag -a v1.2.3 -m "特性摘要 + 破坏性变更清单"`
+4. 更新 `CHANGELOG.md`（按 Keep a Changelog 格式）
+5. `git push origin v1.2.3` + 在 GitHub 开 Release + 写 release notes
+6. 运维群公告：@all 通报新版本 + 是否需要各项目主动升级
+
+**各项目 pin 版本**：
+
+- `bootstrap.sh` 创建 `<app-dir>/scripts/.kit-version` 记录当前 pin 的 **commit SHA**（不是 tag name，tag 可能被强制移动）
+- `.kit-version` 内容格式：
+  ```
+  # Kit version metadata
+  KIT_TAG=v1.2.3
+  KIT_COMMIT=abc1234567890...  # 被 pin 的具体 commit SHA
+  KIT_INSTALLED_AT=2026-04-24T18:00:00+08:00
+  ```
+
+**升级流程**：
+
+- 查看当前版本：`cat scripts/.kit-version`
+- 查看可用新版：`curl -s https://api.github.com/repos/neilding/ops-deploy-kit/releases/latest | grep tag_name`
+- 升级：`./scripts/upgrade-kit.sh v1.2.3`（下载该 tag → 比对 SHA → 原子替换 → 更新 .kit-version）
+- 回滚：`./scripts/upgrade-kit.sh v1.1.0`（逆向操作即可）
+
+**版本共存**：不支持同一项目使用多个 Kit 版本；不同项目之间版本可完全独立。
+
+### 5.7 供应链保护（v0.2 新增，补强 S1）
+
+**PRD v0.1 的风险**：`curl -sL ... | bash` 是公认的供应链攻击面，无任何验证手段。
+
+**v0.2 方案**：
+
+**🔴 生产接入（推荐）—— clone + checksum + review**：
 
 ```bash
-# 1. 在服务器上登录项目机器
+# 1. clone 指定 tag（不是 main，避免 TOCTOU）
+git clone --depth=1 --branch=v1.0.0 https://github.com/neilding/ops-deploy-kit /tmp/kit-v1.0.0
+cd /tmp/kit-v1.0.0
+
+# 2. 验证 bootstrap.sh 的 SHA256（预期值在 Kit README 顶部公布）
+sha256sum bootstrap.sh
+# 期望: <Kit 官方公布的 v1.0.0 checksum>
+
+# 3. （可选但推荐）手工 review 脚本内容
+less bootstrap.sh
+less scripts/wecom_notify.sh
+less scripts/auto_pull_deploy.sh
+
+# 4. 执行
+./bootstrap.sh <project-name> /home/ops/<project-name>
+```
+
+**🟡 快速试用模式**（仅非生产 / 个人工具 / 试水）：
+
+保留 `curl | bash` 作为单行脚本路径，但 README 必须醒目标注：
+
+> ⚠️ 快速路径**仅适用于开发/试用/个人环境**；任何生产项目**必须**走上面的 clone+checksum 方式。
+
+**Kit 自身防护**：
+
+- Kit 仓库启用 GitHub Branch Protection + Required PR reviews
+- `main` 分支所有 commit 必须 signed（`git commit -S`）
+- Release tag 必须 annotated（`git tag -a`，不用 lightweight tag）
+- 每次 Release 在 GitHub Release 页面公布所有脚本的 SHA256 清单
+
+### 5.8 自监控：心跳机制（v0.2 新增，补强 S2）
+
+**痛点实证**（本 session 发现）：uhomes-workorder 的 `deploy-notify.sh` 因
+`/opt/dootask/.deploy.env` 缺失**持续静默失效**（不知何时失效的），
+`wecom_notify.sh` 始终 `exit 0`，运维群完全无感知。
+
+**Kit 必须解决这个问题**——通知链路断了要能在 25 小时内被发现。
+
+**方案**：
+
+1. **Kit 提供 `scripts/heartbeat.sh`**（v1.0 Phase 1 必交付项）
+
+   功能：加载 `.deploy.env` → 调 `wecom_notify.sh` 推一条低调心跳：
+   ```
+   ## 💓 <PROJECT_NAME> 心跳
+   **时间**：2026-04-25 10:00:00
+   **主机**：dingning
+   **最近部署**：`abc12345` · 2026-04-24 09:15:23（16 小时前）
+   **Kit 版本**：v1.0.0
+   ```
+
+2. **bootstrap.sh 自动加 cron 行**：
+   ```
+   0 10 * * * /home/ops/<project>/scripts/heartbeat.sh
+   ```
+
+3. **运维群约定 SLA**（Kit README 第一段强制要求）：
+   > "每个接入 Kit 的项目，每天早 10:00 必有一条💓 心跳消息。如果某项目 > 25 小时无心跳 → 立即排查 `.deploy.env` / webhook 是否失效。"
+
+4. **频率控制**：1 天 1 条/项目。如果 10 个项目接入，运维群每天早 10:00 集中收到 10 条心跳，不吵。
+
+**监控升级路径（Phase 3 再做）**：
+
+- 在某台有权限的服务器起一个定时任务（每天 11:00 巡检）
+- 扫描心跳群里最近 24h 出现的项目名，对照已接入项目清单
+- 缺失则自动 `@ 运维值班` 升级告警
+
+**代价**：每个项目多一条 cron 行；群里每天多 N 条消息。相比"通知链路静默失效未知时长"的代价，完全可接受。
+
+---
+
+## 6. 接入流程（生产 10 分钟，含阅读）
+
+> v0.2 已统一：不再宣称 "3 分钟"。加上阅读 README 与验证的时间，**10 分钟是实际上限**。
+> 熟练用户实际命令执行 ~3 分钟，但**首次接入必须读 README** 了解 SLA 和配置约定。
+
+**🔴 生产接入（clone + checksum）**：
+
+```bash
+# 0. 在业务机登录项目目录
 ssh ops@<business-machine>
 cd /home/ops/<project>
 
-# 2. 一键接入 Kit
-curl -sL https://raw.githubusercontent.com/neilding/ops-deploy-kit/main/bootstrap.sh \
-  | bash -s <project-name> $(pwd)
+# 1. clone 指定 tag（不用 main，避免供应链问题）
+git clone --depth=1 --branch=v1.0.0 https://github.com/neilding/ops-deploy-kit /tmp/kit-v1.0.0
 
-# 3. 填 webhook URL
+# 2. 验证 bootstrap.sh 的 SHA256（预期值在 Kit README）
+sha256sum /tmp/kit-v1.0.0/bootstrap.sh
+# 和 README 公布的 checksum 比对，一致才继续
+
+# 3.（可选）review 关键脚本
+less /tmp/kit-v1.0.0/bootstrap.sh
+
+# 4. 执行 bootstrap
+/tmp/kit-v1.0.0/bootstrap.sh <project-name> $(pwd)
+
+# 5. 填 webhook URL
 nano .deploy.env
-# 内容只有一行：WECOM_BOT_WEBHOOK_URL=https://qyapi.weixin.qq.com/...
+# 内容：WECOM_BOT_WEBHOOK_URL=https://qyapi.weixin.qq.com/...
 chmod 600 .deploy.env
 
-# 4. 加 cron
-(crontab -l; echo "*/2 * * * * /home/ops/<project>/scripts/auto_pull_deploy.sh") | crontab -
+# 6. bootstrap 会提示你选 cron 方式（详见 §8 R5 fallback）
 
-# 5.（可选）写项目专属 post_pull.sh
+# 7.（可选）写项目专属 post_pull.sh
 cat > scripts/post_pull.sh <<'EOF'
 #!/bin/bash
 set -e
@@ -275,7 +437,19 @@ pip install -q -r requirements.txt
 # 项目特有的重启逻辑...
 EOF
 chmod +x scripts/post_pull.sh
+
+# 8. 清理临时 clone
+rm -rf /tmp/kit-v1.0.0
 ```
+
+**🟡 快速试用模式**（仅非生产）：
+
+```bash
+curl -sL https://raw.githubusercontent.com/neilding/ops-deploy-kit/main/bootstrap.sh \
+  | bash -s <project-name> $(pwd)
+```
+
+> ⚠️ 无 checksum 验证、无 review 机会。**仅用于个人工具 / 开发环境**。生产严禁。
 
 完成。
 
@@ -292,7 +466,10 @@ chmod +x scripts/post_pull.sh
 | P1.3 写 `bootstrap.sh` + `README.md` | 接入指南 | 0.5d |
 | P1.4 写 `docs/WECOM_MARKDOWN_QUIRKS.md` 等踩坑文档 | 3 份 doc | 1d |
 | P1.5 在**空白测试项目**上验证 bootstrap 流程 | 测试日志 | 0.5d |
-| **Phase 1 小计** | | **3-4 d** |
+| **P1.6 从 ai-news-bot 脚本拆分通用/特有部分**（v0.2 新增，补强 A4） | pip/playwright 剥到 `post_pull.sh` 示例 | 1d |
+| **P1.7 编写心跳脚本 + SLA 文档**（v0.2 新增，补强 S2） | `heartbeat.sh` + README SLA 章节 | 0.5d |
+| **P1.8 §12 测试方案中 L1 + L2**（v0.2 新增，补强 T1） | bats-core 单测 + docker 集测 | 1.5d |
+| **Phase 1 小计** | | **6-7 d**（v0.1 低估为 3-4d，v0.2 修正） |
 
 ### Phase 2：迁移存量项目（1-2 天 × 项目数）
 
@@ -321,8 +498,40 @@ chmod +x scripts/post_pull.sh
 | R2: webhook URL 泄露（Kit 仓库不当存储） | 运维群被恶意发帖 | 低 | Kit 仓库**不存**任何真实 webhook，只给 `.env.example`；配置强制 `chmod 600` |
 | R3: 用户复制 Kit 后未 pin 版本，Kit 改动反向影响 | 无感知断裂 | 中 | bootstrap.sh 默认 pin 到 Kit 最新稳定 tag，而非 main |
 | R4: 不同操作系统（Ubuntu/Debian/CentOS）bash 差异 | 部分 bash 语法在某些发行版失效 | 低 | README 明确要求 `bash >= 4.0`；脚本头加 `#!/bin/bash`；在 Ubuntu 20.04 + 22.04 先验证 |
-| R5: ops 用户在某些服务器**没有 crontab 权限** | Kit 不能自启部署 | 中 | `bootstrap.sh` 检测权限，无则提示"联系运维管理员加 sudo cron" |
+| R5: ops 用户在某些服务器**没有 crontab 权限** | Kit 不能自启部署 | 中 | **v0.2 补强**：`bootstrap.sh` 检测权限，3 条 fallback 路径（见下方） |
 | R6: 项目使用自定义部署流程（不是 cron-pull） | Kit 的 `auto_pull_deploy.sh` 不适用 | 高 | Kit 拆分为"通知模块"（`wecom_notify.sh` 独立可用）+ "部署模板"（可选替换）；仅使用通知的项目无需 `auto_pull_deploy.sh` |
+
+### 8.1 R5 fallback 详细方案（v0.2 新增，补强 O1）
+
+`bootstrap.sh` 检测 crontab 写权限后按优先级选择：
+
+**路径 A — 普通用户 crontab 可用（最常见）**
+```bash
+(crontab -l 2>/dev/null; echo "*/2 * * * * /home/ops/<project>/scripts/auto_pull_deploy.sh") | crontab -
+```
+bootstrap.sh 自动添加，用户无感知。
+
+**路径 B — 用户级 systemd timer**（无 crontab 写权但有 systemd user 支持）
+```bash
+# bootstrap.sh 生成两个文件：
+~/.config/systemd/user/ops-deploy-<project>.service
+~/.config/systemd/user/ops-deploy-<project>.timer
+
+# 用户一条命令启用：
+systemctl --user enable --now ops-deploy-<project>.timer
+```
+Ubuntu/Debian 默认支持 user systemd；免 sudo。
+
+**路径 C — 生成 /etc/cron.d snippet，让管理员 copy-paste**（兜底）
+```bash
+# bootstrap.sh 输出：
+# ========== 请联系服务器管理员执行以下 1 条命令 ==========
+sudo cp /tmp/ops-deploy-<project>.cron /etc/cron.d/<project>
+# =====================================================
+```
+管理员只需 1 行 `cp`，不需要理解 Kit 内部。
+
+**决策逻辑**：bootstrap.sh 自动检测 → 默认用 A；A 失败试 B；B 失败输出 C 的操作提示。
 
 ---
 
@@ -368,11 +577,122 @@ chmod +x scripts/post_pull.sh
 
 ---
 
-## 12. 修正记录
+## 12. 测试方案（v0.2 新增，补强 T1）
+
+### 12.1 测试层级总览
+
+| 层级 | 目的 | 工具 | 通过标准 | 自动化 |
+|---|---|---|---|---|
+| **L1 单元** | 单脚本行为断言 | bats-core | 10 case 全绿 | 必须自动化 (CI) |
+| **L2 集成** | 脚本组合流程 | docker compose + mock webhook | 5 关键 case 全绿 | 必须自动化 |
+| **L3 E2E** | 完整流水线真跑 | staging 项目 + 真实 webhook | 通知格式符合 §5.4 | 半自动（人工核对） |
+| **L4 回归** | 存量迁移前后对比 | diff | 字节级一致（除声明差异） | 手工 |
+
+### 12.2 L1 单元测试 · `wecom_notify.sh`
+
+| # | 场景 | 输入 | 期望行为 |
+|---|---|---|---|
+| U1 | webhook URL 未配置 | env 无 `WECOM_BOT_WEBHOOK_URL` | stderr 警告信息 + `exit 0` + **不发任何 HTTP 请求** |
+| U2 | webhook URL 无效 | HTTP 返回 !=200 | stderr 含 HTTP code + exit 0 |
+| U3 | HTTP 200 但企微 errcode != 0 | 模拟响应 `{"errcode":40001,"errmsg":"invalid key"}` | stderr 含 errmsg + exit 0 |
+| U4 | 完全成功 | HTTP 200 + errcode 0 | 无 stderr + exit 0 |
+| U5 | curl 网络超时 | mock 不响应 | stderr 含 "000" + exit 0 |
+
+### 12.3 L1 单元测试 · `auto_pull_deploy.sh`
+
+| # | 场景 | 前置条件 | 期望行为 |
+|---|---|---|---|
+| A1 | 无新 commit | LOCAL == REMOTE | 秒退，**不写 deploy.log**，不推通知 |
+| A2 | 有新 commit + post_pull 成功 | mock post_pull.sh 返回 0 | 推成功通知，含 §5.4 所有字段 |
+| A3 | post_pull 失败 | mock post_pull.sh 返回非 0 | 推失败通知，含退出码 |
+| A4 | git fetch 网络失败（exit 128） | mock git fetch 返回 128 | 首 4 次不推；第 5 次累计触发告警；成功后重置计数 |
+| A5 | 并发 flock 失败 | 模拟另一进程持锁 | 静默 exit 0，**不写日志** |
+
+### 12.4 L2 集成测试
+
+在 docker compose 中跑完整流水线：
+
+**组件**：
+- `mock-wecom`：nginx 容器模拟 webhook，把每次 POST 记录到 `/var/log/webhook.log`
+- `test-project`：一个 fixture git 仓库 + 假的 post_pull.sh
+- `test-kit`：挂载 Kit 脚本 + 调度器
+
+**关键 case**：
+
+| # | 场景 | 断言 |
+|---|---|---|
+| I1 | 完整 bootstrap 一个新项目 | scripts/ 出现所有文件 + 权限正确 + `.deploy.env.template` 生成 |
+| I2 | 推一个 commit，auto_pull 触发 | mock-wecom 收到 1 条符合 §5.4 格式的 markdown |
+| I3 | post_pull 主动失败 | mock-wecom 收到失败通知 + deploy.log 记录退出码 |
+| I4 | 连续 5 次 git fetch 失败 | mock-wecom 第 5 次才收到 1 条"连续失败 5 次"告警 |
+| I5 | heartbeat.sh 触发 | mock-wecom 收到 💓 心跳消息 |
+
+### 12.5 L3 E2E 测试（真实环境）
+
+新建 staging 项目 `/home/ops/kit-staging/` 走完整生产接入流程：
+
+1. clone + checksum + bootstrap
+2. 填真实 webhook URL
+3. 推几个 commit，观察真实运维群
+4. 人工核对：
+   - 通知 markdown 格式（对比 §5.4 模板）
+   - Diff 链接点击能跳 GitHub compare
+   - 心跳消息每天 10:00 准时到达（至少观察 3 天）
+   - 通知样式在企微 PC / 移动端都正常
+
+### 12.6 L4 回归测试（ai-news-bot 迁移）
+
+**迁移前**（当前状态）：跑 3 次真实 deploy，把通知文本复制到 `tests/before.txt`
+**迁移到 Kit v1.0.0 后**：同样跑 3 次 deploy，收集 `tests/after.txt`
+**通过标准**：`diff before.txt after.txt` 只能有以下声明的差异：
+- 版本号行（commit SHA 必然变化）
+- 时间戳行
+- **变更** 列表行（如果 commit 数不同）
+- **任何其他字段的格式变化都视为回归缺陷**，必须修复
+
+如果发现回归，开 blocker issue，不得合并。
+
+### 12.7 测试执行矩阵
+
+| 时机 | 执行层级 | 谁负责 |
+|---|---|---|
+| 每次 PR | L1 + L2 | GitHub Actions CI |
+| 每次 Release 前 | L1 + L2 + L3 | 项目 owner 手工跑 L3 |
+| 接入新项目时 | L4 | 该项目接入者（和 owner 一起 review diff） |
+| 发生生产告警后 | 对应问题层级的回归 case | owner + 报告者 |
+
+### 12.8 测试覆盖率目标
+
+- L1 + L2 行覆盖率 ≥ 80%（bash 天花板就这样，剩下 20% 是错误路径 + shell 内置）
+- L3 每次 Release 至少 1 次完整跑通
+- L4 每次迁移项目必做
+
+
 
 （本 PRD 初筛发现与核实差异，评审过程中补充）
 
-无（首版）
+### v0.1 → v0.2 修正（基于 AUDIT_2026-04-24_PRD_OPS_KIT_GATE1.md）
+
+| # | v0.1 问题 | v0.2 修正 | 修正位置 | 状态 |
+|---|---|---|---|---|
+| A1 | "10 分钟" vs "3 分钟" 接入时间前后不一致 | 统一为 "10 分钟（含 README 阅读）" | §2.1 G1、§6 标题 | ✅ 已修 |
+| A2 | disk_alert.sh 在 §5.1 出现但 §2.2 又排除 | §5.1 改成 "Phase 3 扩展位" ；§2.2 加"未来扩展点"说明 | §2.2、§5.1 | ✅ 已修 |
+| A3 | 版本化策略只是口号，没具体流程 | 加 §5.6 完整 SemVer + pin SHA + upgrade/rollback 命令 | §5.6 | ✅ 已修 |
+| A4 | 从现有脚本抽取通用部分工作量未列入 Phase 1 | 加 P1.6（1d） | §7 表格 | ✅ 已修 |
+| S1 | `curl \| bash` 供应链风险 | 加 §5.7：生产必须 clone + checksum + review；`curl \| bash` 降级为"快速试用"明确标注 | §5.7、§6 接入流程 | ✅ 已修 |
+| S2 | 通知系统自监控缺失（uhomes-workorder 实证教训） | 加 §5.8：heartbeat.sh + SLA 约定 > 25h 无心跳告警 | §5.8、§7 P1.7 | ✅ 已修 |
+| T1 | 测试方案空白 | 加整个 §12：L1/L2/L3/L4 四层 + 具体 test case + 执行矩阵 | §12、§7 P1.8 | ✅ 已修 |
+| O1 | R5 (无 crontab 权限) 仅"联系管理员" | 加 §8.1：路径 A/B/C 三层 fallback，含 systemd user timer | §8.1 | ✅ 已修 |
+| C1 | "10 个项目 × 2-3h" 假设未核实 | 加 §1.4 需求调研清单 + ROI 重算（6-12 个月回本） | §1.4 | ✅ 已修 |
+
+### v0.2 未修项（🟢 可延后，接受现状）
+
+- S3 `.deploy.env` 严格解析（`set -a; source` → grep + eval）—— 本地 600 权限已足够，defense in depth 延后
+- O2 logrotate 自动配置 —— 日志量当前够用，项目接入 6+ 个后再评估
+- C2 Kit 维护成本更精细估算 —— 已在 §1.4 修正为 "3-5h/月"
+- C3 机会成本讨论 —— 已在用户确认"假设 A"后过时
+
+
 
 ---
 
