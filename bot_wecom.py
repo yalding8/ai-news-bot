@@ -26,6 +26,8 @@ from config import (
 from news_fetcher import NewsFetcher, TOPIC_KEYWORDS
 from ai_summarizer import AISummarizer
 from news_cache import filter_new_news, mark_news_as_sent
+from image_fetcher import fetch_article_image
+from poster_generator import PosterData, render_png, theme_for
 
 logger = get_logger(__name__)
 
@@ -225,6 +227,113 @@ def process_topic_news(topic_key: str) -> Dict:
         return {"success": False, "error": str(e), "topic_key": topic_key}
 
 
+def build_poster_data(top_news: list, poster_items: list) -> PosterData:
+    """
+    把 top_news 原始新闻 + AI 结构化摘要 → PosterData。
+    hero = 第 1 条（抓 og:image 作为封面），items = 第 2-5 条。
+    """
+    from datetime import datetime
+    from pathlib import Path
+
+    today = datetime.now()
+
+    # hero 封面：抓文章 og:image（失败则留空，走海报的大数字兜底）
+    hero_raw = top_news[0] if top_news else {}
+    hero_item = poster_items[0] if poster_items else {}
+    hero_image_path = ""
+    if hero_raw.get("url"):
+        try:
+            img = fetch_article_image(hero_raw["url"])
+            if img and Path(img).exists():
+                hero_image_path = str(img)
+                logger.info(f"🖼️  Hero 封面已缓存: {img}")
+        except Exception as e:
+            logger.warning(f"⚠️ Hero 封面抓取失败: {e}")
+
+    hero: dict = {
+        "title_zh": hero_item.get("title_zh", ""),
+        "title_en": hero_item.get("title_en", hero_raw.get("title", "")),
+        "summary": hero_item.get("summary", ""),
+        "punch": hero_item.get("punch", ""),
+        "source": hero_item.get("source", hero_raw.get("source", "")),
+    }
+    if hero_image_path:
+        hero["image_path"] = hero_image_path
+
+    items: list = []
+    for it in poster_items[1:5]:
+        items.append({
+            "title_zh": it.get("title_zh", ""),
+            "title_en": it.get("title_en", ""),
+            "summary": it.get("summary", ""),
+            "source": it.get("source", ""),
+        })
+
+    issue_no = f"No.{today.timetuple().tm_yday:03d}"
+
+    return {
+        "date_str": today.strftime("%Y年%m月%d日"),
+        "date_str_en": today.strftime("%b %d · %Y").upper(),
+        "issue_no": issue_no,
+        "theme": theme_for(today.date()),
+        "hero": hero,
+        "items": items,
+    }
+
+
+def send_wecom_image(image_path: "Path") -> bool:
+    """
+    发送图片到企业微信群（image 消息类型：base64 + md5）。
+    企微上限 2MB，超限由 poster_generator 已自动转 JPEG。
+    """
+    import base64
+    import hashlib
+
+    if not WECOM_WEBHOOK_URLS:
+        logger.error("错误：未设置 WECOM_WEBHOOK_URL")
+        return False
+
+    try:
+        raw = image_path.read_bytes()
+    except Exception as e:
+        logger.error(f"❌ 读取海报失败: {e}")
+        return False
+
+    size_kb = len(raw) / 1024
+    if len(raw) > 2 * 1024 * 1024:
+        logger.error(f"❌ 海报 {size_kb:.1f} KB 超过企微 2MB 上限")
+        return False
+
+    data = {
+        "msgtype": "image",
+        "image": {
+            "base64": base64.b64encode(raw).decode("ascii"),
+            "md5": hashlib.md5(raw).hexdigest(),
+        },
+    }
+
+    all_success = True
+    unique_webhooks = list(dict.fromkeys(WECOM_WEBHOOK_URLS))
+    for webhook_url in unique_webhooks:
+        try:
+            response = send_session.post(webhook_url, json=data, timeout=15)
+            if response.status_code != 200:
+                logger.error(f"❌ 海报发送失败 ({webhook_url[-10:]}) HTTP {response.status_code}")
+                all_success = False
+                continue
+            result = response.json()
+            if result.get("errcode") == 0:
+                logger.info(f"✅ 海报发送成功 ({webhook_url[-10:]}, {size_kb:.1f} KB)")
+            else:
+                logger.error(f"❌ 海报发送失败 errcode={result.get('errcode')} errmsg={result.get('errmsg')}")
+                all_success = False
+        except Exception as e:
+            logger.error(f"❌ 海报发送异常 ({webhook_url[-10:]}): {e}")
+            all_success = False
+
+    return all_success
+
+
 def safe_truncate_markdown(message: str, max_bytes: int = 4000) -> str:
     """
     安全截断 Markdown 消息，保持格式完整
@@ -344,6 +453,24 @@ def send_daily_news(topics: list = None):
 
     logger.info("🤖 AI正在生成新闻摘要...")
     ai_summary = ai_summarizer.summarize_daily_news(top_news, news_text)
+
+    # 海报：AI 结构化摘要 → 渲染 PNG → 先发图片
+    # 失败不阻塞主流程（后面的 markdown 仍会发）
+    try:
+        poster_items = ai_summarizer.summarize_for_poster(top_news, news_text)
+        if poster_items:
+            poster_data = build_poster_data(top_news, poster_items)
+            from pathlib import Path
+            out_dir = Path(__file__).parent / "out"
+            out_dir.mkdir(exist_ok=True)
+            png_path = out_dir / f"poster_{datetime.now().strftime('%Y%m%d')}.png"
+            final_path = render_png(poster_data, png_path)
+            logger.info(f"🎨 海报已生成: {final_path.name} ({final_path.stat().st_size / 1024:.1f} KB)")
+            send_wecom_image(final_path)
+        else:
+            logger.warning("⚠️ 海报结构化摘要为空，跳过海报，仅发文本")
+    except Exception as e:
+        logger.error(f"❌ 海报流程异常（不影响文本发送）: {e}")
 
     # 标记为已推送
     mark_news_as_sent('daily_digest', top_news)

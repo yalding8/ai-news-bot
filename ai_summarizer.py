@@ -1,3 +1,6 @@
+import json
+import re
+
 from openai import OpenAI
 from config import DEEPSEEK_API_KEY, LLM_BASE_URL, LLM_MODEL, NEWS_TOPICS, get_logger
 
@@ -140,6 +143,83 @@ class AISummarizer:
         except Exception as e:
             logger.error(f"❌ AI总结失败: {e}")
             return self._fallback_summary(news_list, "国际教育新闻")
+
+    def summarize_for_poster(self, news_list: list, news_text: str) -> list | None:
+        """
+        为海报生成结构化摘要：5 条（hero + 4 items），每条含
+        title_zh / title_en / summary / punch / source_title。
+
+        返回 list[dict]，失败返回 None（调用方走降级）。
+        """
+        if not news_list:
+            return None
+
+        take = min(5, len(news_list))
+        logger.info(f"  └─ AI 为海报生成结构化摘要（{take} 条）…")
+
+        prompt = f"""你是一位国际教育行业日报主编，下面是今日 {len(news_list)} 条候选新闻：
+
+{news_text}
+
+请从中挑选最重要的 {take} 条（第 1 条为当日头条，其余按重要性排序），为每条生成以下 5 个字段：
+- title_zh: 中文标题（12-22 字，精炼有力，可含数字/百分比/国家名，不要加引号）
+- title_en: 英文标题（必须完全复制候选新闻的原始标题，逐字一致）
+- summary: 中文摘要 1-2 句（40-80 字，含关键数据如金额/百分比/时间，不要口号）
+- punch: 一句点睛（15-30 字，给留学生家长的行动建议或洞察，例如"申请季家长需关注签证拒签率变化"）
+- source: 来源（从原始新闻提取，如 "The PIE News" / "Higher Ed Dive"）
+
+⚠️ 严格要求：
+1. 只从给定候选新闻中选，禁止编造
+2. title_en 必须逐字复制原始标题
+3. 输出**合法 JSON**，结构为 {{"items": [...]}}，不要在 JSON 外输出任何文字、解释、markdown 代码块标记
+4. 不要使用 ```json``` 包裹
+
+请直接输出 JSON："""
+
+        try:
+            response = self.client.chat.completions.create(
+                model=self.model,
+                messages=[{"role": "user", "content": prompt}],
+                max_tokens=1500,
+                temperature=0.3,
+            )
+            raw = response.choices[0].message.content.strip()
+
+            # 容错剥离 ```json 包装
+            raw = re.sub(r"^```(?:json)?\s*", "", raw)
+            raw = re.sub(r"\s*```$", "", raw)
+
+            data = json.loads(raw)
+            items = data.get("items") if isinstance(data, dict) else None
+            if not items or not isinstance(items, list):
+                logger.warning("⚠️ 海报结构化摘要返回无 items 字段")
+                return None
+
+            # 校验必填字段
+            required = {"title_zh", "title_en", "summary", "punch", "source"}
+            cleaned = []
+            for idx, it in enumerate(items[:take]):
+                if not isinstance(it, dict):
+                    continue
+                missing = required - set(it.keys())
+                if missing:
+                    logger.warning(f"⚠️ 海报第 {idx+1} 条缺字段: {missing}")
+                    continue
+                cleaned.append({k: str(it[k]).strip() for k in required})
+
+            if len(cleaned) < min(3, take):
+                logger.warning(f"⚠️ 海报有效条目不足: {len(cleaned)}/{take}")
+                return None
+
+            logger.info(f"✅ 海报结构化摘要完成（{len(cleaned)} 条）")
+            return cleaned
+
+        except json.JSONDecodeError as e:
+            logger.error(f"❌ 海报摘要 JSON 解析失败: {e} / raw: {raw[:200]}")
+            return None
+        except Exception as e:
+            logger.error(f"❌ 海报摘要生成失败: {e}")
+            return None
 
     def _validate_summary(
         self,

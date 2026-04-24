@@ -51,3 +51,9 @@ health_check.sh
 
 # 运行锁文件
 .news_bot.lock
+
+# 文章封面图本地缓存（运行时下载，不入库）
+assets/cache/
+
+# 海报渲染输出
+out/
