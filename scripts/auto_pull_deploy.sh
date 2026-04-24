@@ -25,14 +25,18 @@ FAIL_COUNT_FILE="$APP_DIR/.deploy-fail-count"
 ALERT_SENT_FILE="$APP_DIR/.deploy-alert-sent"
 NET_FAIL_THRESHOLD="${NET_FAIL_THRESHOLD:-5}"
 
-# 加载企微 webhook（复用 uhomes-workorder 的运维工程师群配置）
-DEPLOY_ENV_FILE="/opt/dootask/.deploy.env"
-if [ -f "$DEPLOY_ENV_FILE" ]; then
-  set -a
-  # shellcheck disable=SC1090
-  source "$DEPLOY_ENV_FILE"
-  set +a
-fi
+# 加载企微 webhook。优先级：
+#   1. $APP_DIR/.deploy.env          （项目独立配置，推荐）
+#   2. /opt/dootask/.deploy.env      （与 uhomes-workorder 共用的运维工程师群，fallback）
+for env_candidate in "$APP_DIR/.deploy.env" "/opt/dootask/.deploy.env"; do
+  if [ -f "$env_candidate" ] && [ -r "$env_candidate" ]; then
+    set -a
+    # shellcheck disable=SC1090
+    source "$env_candidate"
+    set +a
+    break
+  fi
+done
 
 cd "$APP_DIR" || exit 1
 

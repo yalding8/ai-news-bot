@@ -2,6 +2,7 @@
 .env
 .env.local
 .env.backup
+.deploy.env
 *.env
 
 # 日志文件
