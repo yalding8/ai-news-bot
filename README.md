@@ -59,7 +59,7 @@ SEND_WHEN_NO_NEW=0
 DINGNING_GITHUB_TOKEN=ghp_xxxxx     # https://github.com/settings/tokens
 DINGNING_REPO=yalding8/dingning-ai
 DINGNING_BASE_URL=https://dingning.ai
-DINGNING_DEPLOY_WAIT_SEC=90         # Vercel 部署等待秒，确保群消息发出时页面已就绪
+DINGNING_DEPLOY_WAIT_SEC=60         # Vercel 部署等待秒，扣减海报已耗时后 sleep 剩余
 ```
 
 ### 3. 运行
@@ -97,22 +97,29 @@ python bot_wecom.py
 
 ## dingning.ai 跨项目集成
 
-每日推送 = 海报 + MDX + 文本三件套：
+每日推送 = 海报 + MDX + 文本三件套，**publish 提前到海报之前**让 Vercel 构建与海报推送时间重叠：
 
 ```
 ai-news-bot                                  dingning-ai (Next.js SSG)
 ─────────────                                ──────────────────────────
-poster_items ─────► dingning_publisher ────► PUT content/coffee/{date}.mdx
-                    (GitHub Contents API)         │
-                                                  ▼
-                                            Vercel 自动构建
-                                                  │
-                            sleep 90s             ▼
-                                            /coffee/{date} 上线
-                                                  │
-                    send_wecom_message ◄──────────┘
-                    (含 dingning.ai/coffee/{date} 链接)
+AI 摘要 ─────► poster_items
+                  │
+                  ├─► publish_to_dingning ─► PUT content/coffee/{date}.mdx
+                  │   (GitHub Contents API)         │
+                  │                                 ▼
+                  │                           Vercel 后台构建（约 30-60s）
+                  │                                 │
+                  ▼                                 │
+              海报渲染 + 发企微（约 30s）            │
+                  │                                 │
+                  ▼                                 ▼
+              sleep(wait_sec - elapsed)       /coffee/{date} 就绪
+                  │                                 │
+                  └─► send_wecom_message ◄─────────┘
+                      (含 dingning.ai/coffee/{date} 链接)
 ```
+
+实测海报到文本的群内可见间隔约 25-35s（vs 顺序串行的 90s）。
 
 **关键设计**：
 - **失败隔离**：dingning.ai 同步失败不阻塞企微推送，文本退化到 `/coffee` 通用入口

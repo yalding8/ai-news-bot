@@ -52,8 +52,9 @@ SEND_WHEN_NO_NEW = os.getenv('SEND_WHEN_NO_NEW', '0').strip().lower() in ('1', '
 DINGNING_GITHUB_TOKEN = os.getenv('DINGNING_GITHUB_TOKEN', '').strip()
 DINGNING_REPO = os.getenv('DINGNING_REPO', 'yalding8/dingning-ai').strip()
 DINGNING_BASE_URL = os.getenv('DINGNING_BASE_URL', 'https://dingning.ai').strip().rstrip('/')
-# Vercel 部署等待秒数：push 后等多久再推企微，确保用户点链接时页面已就绪
-DINGNING_DEPLOY_WAIT_SEC = int(os.getenv('DINGNING_DEPLOY_WAIT_SEC', '90'))
+# Vercel 部署等待秒数：MDX commit 后等多久再推企微文本，确保用户点链接时页面已就绪。
+# bot_wecom.send_daily_news 会扣减"海报渲染+发送"的已耗时，实际 sleep = wait_sec - elapsed。
+DINGNING_DEPLOY_WAIT_SEC = int(os.getenv('DINGNING_DEPLOY_WAIT_SEC', '60'))
 
 # News Topics Configuration
 NEWS_TOPICS = {

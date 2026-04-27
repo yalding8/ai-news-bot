@@ -397,12 +397,32 @@ def send_daily_news(topics: list = None):
     top_news = new_news[:9]
     news_text = news_fetcher.format_news_for_ai(top_news)
 
-    # 海报：AI 结构化摘要 → 渲染 PNG → 先发图片
-    # 失败不阻塞主流程（后面的链接文本仍会发）
+    import time
+    from dingning_publisher import publish_to_dingning
+    from config import DINGNING_BASE_URL, DINGNING_DEPLOY_WAIT_SEC
+
+    # AI 摘要先做（海报和 MDX 都依赖它）
     poster_items = None
     try:
         poster_items = ai_summarizer.summarize_for_poster(top_news, news_text)
-        if poster_items:
+    except Exception as e:
+        logger.error(f"❌ AI 海报摘要异常: {e}")
+
+    # publish 提前到海报生成之前 —— Vercel 在后台构建时本地继续做海报，
+    # 把"等部署"和"发海报"重叠，缩短海报到文本的群内可见间隔
+    coffee_url = f"{DINGNING_BASE_URL}/coffee"
+    publish_start = None
+    if poster_items:
+        publish_result = publish_to_dingning(top_news[:5], poster_items[:5])
+        coffee_url = publish_result["url"]
+        if publish_result["success"]:
+            publish_start = time.time()
+    else:
+        logger.warning("⚠️ poster_items 为空，跳过 dingning.ai 同步，文本走通用入口")
+
+    # 海报：渲染 PNG → 发图片
+    if poster_items:
+        try:
             poster_data = build_poster_data(top_news, poster_items)
             from pathlib import Path
             out_dir = Path(__file__).parent / "out"
@@ -411,28 +431,21 @@ def send_daily_news(topics: list = None):
             final_path = render_png(poster_data, png_path)
             logger.info(f"🎨 海报已生成: {final_path.name} ({final_path.stat().st_size / 1024:.1f} KB)")
             send_wecom_image(final_path)
-        else:
-            logger.warning("⚠️ 海报结构化摘要为空，仅发链接文本")
-    except Exception as e:
-        logger.error(f"❌ 海报流程异常（不影响文本发送）: {e}")
+        except Exception as e:
+            logger.error(f"❌ 海报流程异常（不影响文本发送）: {e}")
 
     # 标记为已推送
     mark_news_as_sent('daily_digest', top_news)
 
-    # 同步到 dingning.ai —— 提交 MDX 触发 Vercel 部署，失败时降级到通用 /coffee 入口
-    import time
-    from dingning_publisher import publish_to_dingning
-    from config import DINGNING_BASE_URL, DINGNING_DEPLOY_WAIT_SEC
-
-    coffee_url = f"{DINGNING_BASE_URL}/coffee"
-    if poster_items:
-        publish_result = publish_to_dingning(top_news[:5], poster_items[:5])
-        coffee_url = publish_result["url"]
-        if publish_result["success"] and DINGNING_DEPLOY_WAIT_SEC > 0:
-            logger.info(f"⏳ 等待 Vercel 部署完成（{DINGNING_DEPLOY_WAIT_SEC}s）...")
-            time.sleep(DINGNING_DEPLOY_WAIT_SEC)
-    else:
-        logger.warning("⚠️ poster_items 为空，跳过 dingning.ai 同步，文本走通用入口")
+    # 等 Vercel 部署完成 —— 扣掉海报已耗时，sleep 剩余时间
+    if publish_start is not None and DINGNING_DEPLOY_WAIT_SEC > 0:
+        elapsed = time.time() - publish_start
+        remaining = max(0, DINGNING_DEPLOY_WAIT_SEC - elapsed)
+        if remaining > 0:
+            logger.info(f"⏳ Vercel 部署等待剩余 {remaining:.0f}s（已发海报耗时 {elapsed:.0f}s）...")
+            time.sleep(remaining)
+        else:
+            logger.info(f"⏩ 海报耗时 {elapsed:.0f}s 已覆盖部署等待，直接发文本")
 
     # 文本（极简版）：海报补充 —— 详情入口收口到 dingning.ai，自家小程序保留。
     # 小程序 schema 必须各自独占一行：同行多 schema + 分隔符会触发企微 markdown
@@ -442,11 +455,10 @@ def send_daily_news(topics: list = None):
     message_parts = [
         f"📅 **异乡早咖啡 · {today_date}**",
         "更多细节见上方海报 ☝️\n",
-        f"📖 **完整阅读** → [{coffee_link_text}]({coffee_url})",
-        "\n---",
+        f"📖 **完整阅读** → [{coffee_link_text}]({coffee_url})\n",
         "🏠 **异乡好居** - 留学生海外的家 [#小程序://异乡好居/vvS67rZGtrvbQIn]",
         "💰 **异乡缴费** - 比一比更省钱 [#小程序://异乡缴费/8d32ABZvjBHh1vd]",
-        "\n💡 *AI 辅助生成 · 异乡早咖啡*",
+        "\n💡 *Powered By 异乡有你，AI驱动 • 实时聚合全球国际教育资讯*",
     ]
 
     final_message = "\n".join(message_parts)
