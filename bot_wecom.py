@@ -399,6 +399,7 @@ def send_daily_news(topics: list = None):
 
     # 海报：AI 结构化摘要 → 渲染 PNG → 先发图片
     # 失败不阻塞主流程（后面的链接文本仍会发）
+    poster_items = None
     try:
         poster_items = ai_summarizer.summarize_for_poster(top_news, news_text)
         if poster_items:
@@ -418,31 +419,45 @@ def send_daily_news(topics: list = None):
     # 标记为已推送
     mark_news_as_sent('daily_digest', top_news)
 
-    # 文本（极简版）：海报补充 —— 仅来源链接 + 小程序入口。
-    # 海报已承载 AI 摘要与 punch line，避免文本重复淹没阅读体验。
-    today_date = datetime.now().strftime("%Y年%m月%d日")
-    message_parts = [
-        f"📅 **异乡早咖啡 · {today_date}** · 更多细节见上方海报\n",
-        "**🔗 来源链接**",
-    ]
-    for news in top_news[:6]:
-        title = news['title']
-        short = title[:36] + "..." if len(title) > 36 else title
-        message_parts.append(f"• [{short}]({news['url']})")
+    # 同步到 dingning.ai —— 提交 MDX 触发 Vercel 部署，失败时降级到通用 /coffee 入口
+    import time
+    from dingning_publisher import publish_to_dingning
+    from config import DINGNING_BASE_URL, DINGNING_DEPLOY_WAIT_SEC
 
-    message_parts.append("\n---")
-    message_parts.append("🏠 **异乡好居** [#小程序://异乡好居/vvS67rZGtrvbQIn] | 💰 **异乡缴费** [#小程序://异乡缴费/8d32ABZvjBHh1vd]")
-    message_parts.append("💡 *AI 辅助生成 · 异乡早咖啡*")
+    coffee_url = f"{DINGNING_BASE_URL}/coffee"
+    if poster_items:
+        publish_result = publish_to_dingning(top_news[:5], poster_items[:5])
+        coffee_url = publish_result["url"]
+        if publish_result["success"] and DINGNING_DEPLOY_WAIT_SEC > 0:
+            logger.info(f"⏳ 等待 Vercel 部署完成（{DINGNING_DEPLOY_WAIT_SEC}s）...")
+            time.sleep(DINGNING_DEPLOY_WAIT_SEC)
+    else:
+        logger.warning("⚠️ poster_items 为空，跳过 dingning.ai 同步，文本走通用入口")
+
+    # 文本（极简版）：海报补充 —— 详情入口收口到 dingning.ai，自家小程序保留。
+    # 小程序 schema 必须各自独占一行：同行多 schema + 分隔符会触发企微 markdown
+    # 解析降级，导致小程序卡片不可点（2026-04-27 验证）。
+    today_date = datetime.now().strftime("%Y年%m月%d日")
+    coffee_link_text = coffee_url.replace("https://", "").replace("http://", "")
+    message_parts = [
+        f"📅 **异乡早咖啡 · {today_date}**",
+        "更多细节见上方海报 ☝️\n",
+        f"📖 **完整阅读** → [{coffee_link_text}]({coffee_url})",
+        "\n---",
+        "🏠 **异乡好居** - 留学生海外的家 [#小程序://异乡好居/vvS67rZGtrvbQIn]",
+        "💰 **异乡缴费** - 比一比更省钱 [#小程序://异乡缴费/8d32ABZvjBHh1vd]",
+        "\n💡 *AI 辅助生成 · 异乡早咖啡*",
+    ]
 
     final_message = "\n".join(message_parts)
     byte_length = len(final_message.encode('utf-8'))
     logger.info(f"📊 文本长度: {len(final_message)} 字符, {byte_length} 字节")
 
-    logger.info("📤 正在发送来源链接...")
+    logger.info("📤 正在发送补充文本（详情入口 + 小程序）...")
     if send_wecom_message(final_message, msgtype="markdown"):
-        logger.info("✅ 链接文本发送成功")
+        logger.info("✅ 补充文本发送成功")
     else:
-        logger.error("❌ 链接文本发送失败")
+        logger.error("❌ 补充文本发送失败")
 
 
 def fetch_topic_news_raw(topic_key: str) -> list:

@@ -45,6 +45,16 @@ TOPIC_ALIASES = {
 # If enabled, still send a digest even when no new items are found
 SEND_WHEN_NO_NEW = os.getenv('SEND_WHEN_NO_NEW', '0').strip().lower() in ('1', 'true', 'yes', 'y', 'on')
 
+# ========== dingning.ai 跨项目发布 ==========
+# 每日早咖啡 MDX 通过 GitHub Contents API 提交到 dingning-ai 仓库，
+# Vercel 检测到 push 后自动重新构建部署。
+# GITHUB_TOKEN: classic PAT 或 fine-grained PAT，需对 yalding8/dingning-ai 仓库有 contents:write 权限
+DINGNING_GITHUB_TOKEN = os.getenv('DINGNING_GITHUB_TOKEN', '').strip()
+DINGNING_REPO = os.getenv('DINGNING_REPO', 'yalding8/dingning-ai').strip()
+DINGNING_BASE_URL = os.getenv('DINGNING_BASE_URL', 'https://dingning.ai').strip().rstrip('/')
+# Vercel 部署等待秒数：push 后等多久再推企微，确保用户点链接时页面已就绪
+DINGNING_DEPLOY_WAIT_SEC = int(os.getenv('DINGNING_DEPLOY_WAIT_SEC', '90'))
+
 # News Topics Configuration
 NEWS_TOPICS = {
     'ai': {'name': 'AI科技', 'emoji': '🤖', 'desc': 'AI领域最新动态', 'color': '#4A90E2'},
