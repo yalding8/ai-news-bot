@@ -88,10 +88,10 @@ python bot_wecom.py
    ├── DeepSeek生成5-6条摘要
    └── 自动翻译英文内容
 
-4. 消息发送
-   ├── 海报 PNG → 企微 image 消息
-   ├── MDX → dingning-ai 仓库（GitHub Contents API）
-   ├── 等待 Vercel 部署（默认 90s）
+4. 消息发送（publish 提前 + 等待时间复用）
+   ├── MDX → dingning-ai 仓库（GitHub Contents API）—— Vercel 后台开始构建
+   ├── 海报 PNG → 企微 image 消息（约 30s，与 Vercel 构建并行）
+   ├── 等待 Vercel 部署完成（默认 60s，扣减海报已耗时后 sleep 剩余）
    └── 文本 → 企微 markdown 消息（含 dingning.ai/coffee/{date} 入口）
 ```
 
@@ -143,7 +143,11 @@ ai-news-bot/
 ├── config.py               # 配置：主题、关键词、RSS源、跨项目参数
 ├── requirements.txt        # Python依赖
 ├── .env.example            # 环境变量模板
-└── .news_cache.json        # 缓存数据（自动生成）
+├── .news_cache.json        # 缓存数据（自动生成）
+└── scripts/
+    ├── wecom_notify.sh     # 企微群机器人 bash 推送工具（运维事件专用）
+    ├── auto_pull_deploy.sh # 服务器端 cron 自动部署（含企微部署成功/失败通知）
+    └── heartbeat.sh        # 每日 💓 心跳（磁盘 + cron 最近运行时间 + 部署 commit）
 ```
 
 ## 可用主题
@@ -164,14 +168,19 @@ ai-news-bot/
 ## 定时任务
 
 ```bash
-# 编辑crontab
-crontab -e
+# 每天早 9:10 推送新闻（北京时间）
+10 9 * * * cd /home/ops/ai-news-bot && ./venv/bin/python3 bot_wecom.py >> /var/log/ai-news.log 2>&1
 
-# 每天早 9:10 运行（北京时间）
-10 9 * * * cd /path/to/ai-news-bot && ./venv/bin/python3 bot_wecom.py >> /var/log/ai-news.log 2>&1
+# 每天 10:05 推送运维心跳（与 aifx 错开 5 分钟）
+5 10 * * * /home/ops/ai-news-bot/scripts/heartbeat.sh >> /home/ops/ai-news-bot/heartbeat.log 2>&1
 ```
 
 > GitHub Actions 定时任务已禁用（见 `.github/workflows/daily_news.yml`），统一由服务器 cron 触发，避免双推。
+
+### 运维通知
+- **部署成功/失败**：`scripts/auto_pull_deploy.sh`（每 2 分钟轮询）检测到新提交后自动部署，结果推送企微运维群
+- **每日心跳**：`scripts/heartbeat.sh` 每天 10:05 推送磁盘用量、cron 最近运行时间、最近部署 commit；25h 没收到 = 告警链路断
+- 以上通知读取服务器 `/home/ops/ai-news-bot/.deploy.env` 中的 `WECOM_BOT_WEBHOOK_URL`（与业务推送的 `WECOM_WEBHOOK_URL` 独立）
 
 ## 常见问题
 
@@ -226,6 +235,26 @@ tail -f /var/log/ai-news.log
 grep "ERROR" /var/log/ai-news.log
 ```
 
+## 已知限制
+
+### 小程序卡片仅 iOS 客户端可点
+
+群消息文本里的 `[#小程序://APPNAME/SHORTID]` schema 在企微不同客户端表现不一致（2026-04-27 验证）：
+
+| 客户端 | 行为 |
+|---|---|
+| iOS | ✅ 渲染成可点小程序卡片 |
+| Android / 鸿蒙 | ❌ 显示为字面文字，不可跳转 |
+| 桌面端 | ❌ 多数版本显示为字面文字 |
+
+WeCom webhook 不支持 `miniprogram_notice` 卡片类型，跨平台可点小程序的唯一官方方式是 `template_card`（`card_type: news_notice` + `card_action.type=2`），需要小程序真实 wx_appid 且每个小程序占一条独立消息。
+
+**当前选择**：保持 2 条消息（海报 + 文字）的简洁结构，接受 Android/鸿蒙 用户看到字面 schema 的降级。如未来要做跨平台可点，需先评估"消息条数翻倍"对群体验的影响。
+
+### 同行多 schema 会触发 markdown 解析降级
+
+写小程序 schema 时**每个必须独占一行**，禁止同行多 schema + `|` 分隔——会让企微 markdown 解析降级，连 iOS 也不可点。
+
 ## 成本估算
 
 | 项目 | 月费用 |
@@ -241,6 +270,9 @@ grep "ERROR" /var/log/ai-news.log
 - 企微文本消息引入 `dingning.ai/coffee/{date}` 详情入口，群里只展示 1 条收口链接
 - 修复小程序 schema 同行多次 + `|` 分隔导致企微 markdown 解析降级、卡片不可点的问题（拆回独占两行）
 - 新增 `dingning_publisher.py` 模块，含失败兜底、幂等更新（按 sha 覆盖）
+- 时序优化：publish 提前到海报之前，海报推送与 Vercel 构建并行，海报到文本群内可见间隔从 92s 降到 25-35s
+- `DINGNING_DEPLOY_WAIT_SEC` 默认从 90 调整到 60（实测 Vercel SSG 构建 30-60s 完成）
+- 文本格式微调：去除 `---` 字面分隔线（企微不渲染成 hr），改用空行做视觉分隔
 
 ### v2.3 (2026-04-24)
 - LLM 接入切换为 OpenAI 兼容协议，新增 `LLM_BASE_URL` / `LLM_MODEL` 环境变量
