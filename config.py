@@ -17,14 +17,15 @@ def get_logger(name: str):
 # API Keys and Configuration
 _webhook_url = os.getenv('WECOM_WEBHOOK_URL', '')
 WECOM_WEBHOOK_URLS = [url.strip() for url in _webhook_url.split(',') if url.strip()]
-DEEPSEEK_API_KEY = os.getenv('DEEPSEEK_API_KEY')
+DEEPSEEK_API_KEY = os.getenv('DASHSCOPE_API_KEY') or os.getenv('DEEPSEEK_API_KEY')
 TIANAPI_KEY = os.getenv('TIANAPI_KEY')
 NEWSAPI_KEY = os.getenv('NEWSAPI_KEY')
 
-# LLM 接入（OpenAI 兼容）。默认走火山方舟 Ark 上的 DeepSeek v3.2；
-# 如需切回 deepseek.com 官方，改 .env 里 LLM_BASE_URL / LLM_MODEL 即可。
-LLM_BASE_URL = os.getenv('LLM_BASE_URL', 'https://ark.cn-beijing.volces.com/api/v3')
-LLM_MODEL = os.getenv('LLM_MODEL', 'deepseek-v3-2-251201')
+# LLM 接入（OpenAI 兼容）。默认走阿里云百炼上的 DeepSeek v4-pro；
+# 切回火山方舟 Ark：LLM_BASE_URL=https://ark.cn-beijing.volces.com/api/v3 LLM_MODEL=deepseek-v3-2-251201
+# 切回 DeepSeek 官方：LLM_BASE_URL=https://api.deepseek.com LLM_MODEL=deepseek-chat
+LLM_BASE_URL = os.getenv('LLM_BASE_URL', 'https://dashscope.aliyuncs.com/compatible-mode/v1')
+LLM_MODEL = os.getenv('LLM_MODEL', 'deepseek-v4-pro')
 
 
 
