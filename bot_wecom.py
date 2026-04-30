@@ -393,6 +393,17 @@ def send_daily_news(topics: list = None):
         logger.warning("⚠️ 未筛到明显国际教育相关新闻，跳过本次日报")
         return
 
+    # 全局来源多样性：每个来源最多出现 2 次，保证最终 9 条覆盖尽量多的来源
+    source_counts: dict = {}
+    diverse_news = []
+    for n in new_news:
+        src = n.get('source', '')
+        if source_counts.get(src, 0) < 2:
+            diverse_news.append(n)
+            source_counts[src] = source_counts.get(src, 0) + 1
+    logger.info(f"🌐 全局来源多样性过滤: {len(new_news)} -> {len(diverse_news)} 条（来自 {len(source_counts)} 个来源）")
+    new_news = diverse_news
+
     # 取前 9 条做海报候选（hero + 4 items），剩余可作链接兜底
     top_news = new_news[:9]
     news_text = news_fetcher.format_news_for_ai(top_news)

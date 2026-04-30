@@ -1002,8 +1002,8 @@ class NewsFetcher:
 
         logger.info(f"📰 {topic}: 从所有源获取{len(unique_news)}条真实新闻，已按质量排序")
 
-        # 应用多样性过滤器（每个来源最多3条）
-        diverse_news = self.apply_diversity_filter(unique_news, max_per_source=3)
+        # 应用多样性过滤器（每个来源最多2条）
+        diverse_news = self.apply_diversity_filter(unique_news, max_per_source=2)
         logger.info(f"🔍 多样性过滤: {len(unique_news)} -> {len(diverse_news)} 条")
 
         # 返回高质量新闻（只返回评分>30的新闻）
