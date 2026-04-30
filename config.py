@@ -59,7 +59,6 @@ DINGNING_DEPLOY_WAIT_SEC = int(os.getenv('DINGNING_DEPLOY_WAIT_SEC', '60'))
 
 # News Topics Configuration
 NEWS_TOPICS = {
-    'ai': {'name': 'AI科技', 'emoji': '🤖', 'desc': 'AI领域最新动态', 'color': '#4A90E2'},
     'finance': {'name': '财经新闻', 'emoji': '💰', 'desc': '金融市场和经济动态', 'color': '#F5A623'},
     'startup': {'name': '创业投资', 'emoji': '🚀', 'desc': '创业公司和投资动态', 'color': '#7ED321'},
 
@@ -96,7 +95,6 @@ EDUCATION_PRIORITY_KEYWORDS = [
 
 # Topic Keywords (Moved from news_fetcher.py to keep config together)
 TOPIC_KEYWORDS = {
-    'ai': ['人工智能', 'AI', '机器学习', '深度学习', 'ChatGPT', 'DeepSeek', '大模型'],
     'finance': ['财经', '金融', '股市', '经济', '投资'],
     'startup': ['创业', '融资', '风投', 'VC', '投资'],
 

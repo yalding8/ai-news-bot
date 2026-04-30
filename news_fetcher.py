@@ -43,7 +43,6 @@ class NewsFetcher:
 
         # 天行数据API接口映射（不同主题对应不同的接口）
         self.tianapi_endpoints = {
-            'ai': '/ai/index',            # AI资讯专用接口
             'finance': '/caijing/index',   # 财经新闻专用接口
             'startup': '/guonei/index',    # 创业新闻使用国内新闻+关键词
 
@@ -72,128 +71,74 @@ class NewsFetcher:
         self.cache_ttl = 3600 # 1小时缓存
         logger.info(f"🚀 启用文件缓存，目录: {self.cache_dir}")
 
-        # RSS订阅源配置（免费、高质量）
-        # 为每个主题配置了更精准的RSS源，提高新闻相关性
+        # RSS订阅源配置
         self.rss_feeds = {
-            'ai': [
-                'https://www.qbitai.com/feed',            # 量子位
-                'https://www.jiqizhixin.com/rss',         # 机器之心
-                'https://www.36kr.com/feed',              # 36氪科技新闻
-                'https://sspai.com/feed',                 # 少数派
-                'https://www.ithome.com/rss/',            # IT之家
-                'https://www.huxiu.com/rss/0.xml',        # 虎嗅科技
-                'https://feeds.feedburner.com/venturebeat/SZYF', # VentureBeat AI
-                'https://techcrunch.com/feed/',           # TechCrunch
-                'https://www.theverge.com/rss/index.xml', # The Verge
-                'https://feeds.feedburner.com/oreilly/radar', # O'Reilly Radar
-                'https://hnrss.org/newest?q=AI',          # Hacker News (AI topic)
-                'http://feeds.arstechnica.com/arstechnica/index', # Ars Technica
-                'https://www.wired.com/feed/category/science/latest/rss', # Wired Science
-                'https://blog.google/technology/ai/rss/', # Google AI Blog (Updated)
-                'https://openai.com/index.xml',            # OpenAI Blog (Updated)
-                'https://paperswithcode.com/rss.xml',     # Papers with Code
-                'https://daily.aiweekly.co/issues.rss',    # AI Weekly (Updated)
-                'https://www.geekpark.net/rss',           # 极客公园
-                'https://www.ifanr.com/feed',             # 爱范儿
-                'https://www.pingwest.com/feed',          # PingWest品玩
-                # 新增 Phase 1 源
-                'https://www.technologyreview.com/feed/topic/artificial-intelligence', # MIT Tech Review AI
-                'https://www.marktechpost.com/feed/',     # MarkTechPost
-                'https://syncedreview.com/feed/',         # Synced (机器之心英文)
-                'https://www.unite.ai/feed/',             # Unite.AI
-                'https://huggingface.co/blog/feed.xml',   # Hugging Face Blog
-            ],
             'finance': [
-                'https://www.huxiu.com/rss/0.xml',        # 虎嗅财经
-                'https://www.36kr.com/feed',              # 36氪（包含财经内容）
+                'https://www.36kr.com/feed',              # 36氪
                 'http://dedicated.wallstreetcn.com/rss.xml', # 华尔街见闻
             ],
             'startup': [
                 'http://www.cyzone.cn/rss/',              # 创业邦
-                'https://www.huxiu.com/rss/0.xml',        # 虎嗅创投
-                'https://www.36kr.com/feed',              # 36氪创投
-                'https://hnrss.org/newest?q=startup',     # Hacker News (Startup)
+                'https://www.36kr.com/feed',              # 36氪
+                'https://hnrss.org/newest?q=startup',     # Hacker News Startup
                 'https://news.crunchbase.com/feed/',      # Crunchbase News
             ],
-            # 国际教育服务行业专业RSS源
             'study_abroad': [
-                # 留学行业权威媒体
-                'https://thepienews.com/feed/',              # The PIE News（留学行业权威）
+                'https://thepienews.com/feed/',              # The PIE News
                 'https://www.studyinternational.com/feed/',  # Study International
                 'https://www.insidehighered.com/rss.xml',    # Inside Higher Ed
-                'https://www.chronicle.com/section/news.rss', # The Chronicle of Higher Education (新增)
-                'https://www.highereddive.com/feeds/news/',  # Higher Ed Dive（新增-高等教育深度报道）
-                'https://www.nafsa.org/rss/news',            # NAFSA News (新增)
-                # 新增 Phase 1 源
-                'https://wenr.wes.org/feed',                 # WENR (World Education News)
-                'https://universitybusiness.com/feed/',      # University Business
-                'https://theknowledgereview.com/feed/',      # The Knowledge Review（新增）
-                # 中文留学媒体
-                'https://www.jiemodui.com/rss.xml',          # 芥末堆
-                'https://www.heibandongcha.com/feed',        # 黑板洞察
-                'https://www.36kr.com/feed',                 # 36氪教育
-            ],
-
-            'edu_policy': [
-                # 政策类RSS源
-                'https://thepienews.com/feed/',              # The PIE News（政策报道）
-                'https://www.studyinternational.com/feed/',  # Study International
-                'https://www.nafsa.org/rss/news',            # NAFSA News (新增-政策)
-                'https://www.insidehighered.com/rss.xml',    # Inside Higher Ed（政策）
-                'https://www.highereddive.com/feeds/news/',  # Higher Ed Dive（政策深度报道）
-                'https://www.jiemodui.com/rss.xml',          # 芥末堆（中国教育政策）
-                # 英国官方（GOV.UK Atom）：按机构订阅，比 search Atom 噪音更少、更稳定
-                'https://www.gov.uk/government/organisations/uk-visas-and-immigration.atom',  # UKVI
-                'https://www.gov.uk/government/organisations/home-office.atom',              # Home Office（移民/签证）
-                'https://www.gov.uk/government/organisations/department-for-education.atom',  # DfE（教育政策）
-                'https://www.gov.uk/government/organisations/office-for-students.atom',       # OfS（高教监管）
-            ],
-
-            'uni_rankings': [
-                # 排名类RSS源
-                'https://www.timeshighereducation.com/rss.xml', # Times Higher Education
-                'https://www.universityworldnews.com/rss.php', # University World News
                 'https://www.highereddive.com/feeds/news/',  # Higher Ed Dive
-                'https://theknowledgereview.com/feed/',      # The Knowledge Review
-            ],
-
-            'market_data': [
-                # 市场数据和分析
-                'https://monitor.icef.com/feed/',            # ICEF Monitor（留学市场数据）
-                'https://thepienews.com/feed/',              # The PIE News
-                'https://www.jiemodui.com/rss.xml',          # 芥末堆（市场分析）
-                'https://www.heibandongcha.com/feed',        # 黑板洞察
-                'https://www.edsurge.com/news.rss',          # EdSurge
-            ],
-
-            'industry_news': [
-                # 竞品和行业动态
+                'https://universitybusiness.com/feed/',      # University Business
+                'https://monitor.icef.com/feed/',            # ICEF Monitor
+                'https://www.universityaffairs.ca/feed/',    # University Affairs (Canada)
+                'https://wonkhe.com/feed/',                  # WonkHE (UK HE policy)
+                'https://www.campusreview.com.au/feed/',     # Campus Review (Australia)
                 'https://www.jiemodui.com/rss.xml',          # 芥末堆
-                'https://www.heibandongcha.com/feed',        # 黑板洞察
-                'https://www.36kr.com/feed',                 # 36氪（融资并购）
-                'https://news.crunchbase.com/feed/',         # Crunchbase News
-                'https://www.highereddive.com/feeds/news/',  # Higher Ed Dive（行业深度）
-                'https://theknowledgereview.com/feed/',      # The Knowledge Review
             ],
-
-            # 原有教育主题（保留，作为综合教育资讯）
+            'edu_policy': [
+                'https://thepienews.com/feed/',              # The PIE News
+                'https://www.studyinternational.com/feed/',  # Study International
+                'https://www.insidehighered.com/rss.xml',    # Inside Higher Ed
+                'https://www.highereddive.com/feeds/news/',  # Higher Ed Dive
+                'https://monitor.icef.com/feed/',            # ICEF Monitor
+                'https://www.universityaffairs.ca/feed/',    # University Affairs (Canada)
+                'https://wonkhe.com/feed/',                  # WonkHE (UK HE policy)
+                'https://www.jiemodui.com/rss.xml',          # 芥末堆
+                'https://www.gov.uk/government/organisations/uk-visas-and-immigration.atom',  # UKVI
+                'https://www.gov.uk/government/organisations/home-office.atom',               # Home Office
+                'https://www.gov.uk/government/organisations/department-for-education.atom',  # DfE
+                'https://www.gov.uk/government/organisations/office-for-students.atom',       # OfS
+            ],
+            'uni_rankings': [
+                'https://monitor.icef.com/feed/',            # ICEF Monitor
+                'https://www.highereddive.com/feeds/news/',  # Higher Ed Dive
+                'https://www.universityaffairs.ca/feed/',    # University Affairs (Canada)
+                'https://wonkhe.com/feed/',                  # WonkHE (UK HE policy)
+                'https://thepienews.com/feed/',              # The PIE News
+            ],
+            'market_data': [
+                'https://monitor.icef.com/feed/',            # ICEF Monitor
+                'https://thepienews.com/feed/',              # The PIE News
+                'https://www.jiemodui.com/rss.xml',          # 芥末堆
+            ],
+            'industry_news': [
+                'https://www.jiemodui.com/rss.xml',          # 芥末堆
+                'https://www.36kr.com/feed',                 # 36氪
+                'https://news.crunchbase.com/feed/',         # Crunchbase News
+                'https://www.highereddive.com/feeds/news/',  # Higher Ed Dive
+            ],
             'education': [
                 'https://www.jiemodui.com/rss.xml',          # 芥末堆
-                'https://www.heibandongcha.com/feed',        # 黑板洞察
-                'https://www.36kr.com/feed',                 # 36氪教育
+                'https://www.36kr.com/feed',                 # 36氪
                 'https://www.insidehighered.com/rss.xml',    # Inside Higher Ed
                 'https://www.highereddive.com/feeds/news/',  # Higher Ed Dive
-                'https://www.timeshighereducation.com/rss.xml', # Times Higher Education
-                'https://www.universityworldnews.com/rss.php', # University World News
             ],
             'pbsa': [
-                'https://www.36kr.com/feed',              # 36氪房地产科技
-                'https://www.huxiu.com/rss/0.xml',        # 虎嗅地产
+                'https://www.36kr.com/feed',
             ],
             'uhomes': [
-                'https://www.36kr.com/feed',              # 36氪
-                'https://www.huxiu.com/rss/0.xml',        # 虎嗅
-            ]
+                'https://www.36kr.com/feed',
+            ],
         }
 
     def _normalize_url(self, url: str) -> str:
@@ -462,15 +407,16 @@ class NewsFetcher:
 
         # 教育专业媒体：固定高分（35分）
         education_sources = [
-            'inside higher ed', 'chronicle', 'edsurge', 'the pie news', 'icef',
-            'jiemodui', '芥末堆', 'heibandongcha', '黑板洞察', 'duozhi', '多知',
-            'wenr', 'nafsa', 'study international'
+            'inside higher ed', 'the pie news', 'icef',
+            'jiemodui', '芥末堆', 'duozhi', '多知',
+            'study international', 'university business',
+            'university affairs', 'wonkhe', 'campus review',
         ]
 
         # 泛科技媒体：基础分 × 相关性系数（25分基础）
         tech_sources = [
-            'techcrunch', '36kr', 'venturebeat', 'huxiu', '虎嗅',
-            'geekpark', '极客公园', 'latepost', '晚点', 'caixin', '财新'
+            'techcrunch', '36kr', 'venturebeat',
+            'latepost', '晚点', 'caixin', '财新'
         ]
 
         # 学术权威媒体：固定高分（30分）
@@ -478,9 +424,8 @@ class NewsFetcher:
 
         # 其他优质媒体：固定中等分（20分）
         quality_sources = [
-            'times higher education', 'qs', 'university world news',
-            'qbitai', '量子位', 'jiqizhixin', '机器之心', 'hugging face',
-            'the verge', 'wired', 'ars technica', 'bloomberg', 'reuters'
+            'qs', 'topuniversities', 'higher ed dive',
+            'bloomberg', 'reuters', 'crunchbase',
         ]
 
         if any(s in source for s in education_sources):
@@ -653,8 +598,9 @@ class NewsFetcher:
 
         # 二级信号判断
         level2_sources = [
-            'pie news', 'icef', 'inside higher ed', 'wenr', 'nafsa',
-            '芥末堆', '黑板洞察', 'times higher education', 'qs'
+            'pie news', 'icef', 'inside higher ed',
+            '芥末堆', 'university affairs', 'wonkhe', 'campus review',
+            'qs', 'topuniversities', 'higher ed dive',
         ]
         level2_keywords = [
             'report', 'statistics', 'survey', 'white paper', 'data release',
