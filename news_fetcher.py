@@ -81,27 +81,21 @@ class NewsFetcher:
                 'http://www.cyzone.cn/rss/',              # 创业邦
                 'https://www.36kr.com/feed',              # 36氪
                 'https://hnrss.org/newest?q=startup',     # Hacker News Startup
-                'https://news.crunchbase.com/feed/',      # Crunchbase News
             ],
             'study_abroad': [
                 'https://thepienews.com/feed/',              # The PIE News
-                'https://www.studyinternational.com/feed/',  # Study International
                 'https://www.insidehighered.com/rss.xml',    # Inside Higher Ed
                 'https://www.highereddive.com/feeds/news/',  # Higher Ed Dive
                 'https://universitybusiness.com/feed/',      # University Business
                 'https://monitor.icef.com/feed/',            # ICEF Monitor
-                'https://www.universityaffairs.ca/feed/',    # University Affairs (Canada)
                 'https://wonkhe.com/feed/',                  # WonkHE (UK HE policy)
-                'https://www.campusreview.com.au/feed/',     # Campus Review (Australia)
                 'https://www.jiemodui.com/rss.xml',          # 芥末堆
             ],
             'edu_policy': [
                 'https://thepienews.com/feed/',              # The PIE News
-                'https://www.studyinternational.com/feed/',  # Study International
                 'https://www.insidehighered.com/rss.xml',    # Inside Higher Ed
                 'https://www.highereddive.com/feeds/news/',  # Higher Ed Dive
                 'https://monitor.icef.com/feed/',            # ICEF Monitor
-                'https://www.universityaffairs.ca/feed/',    # University Affairs (Canada)
                 'https://wonkhe.com/feed/',                  # WonkHE (UK HE policy)
                 'https://www.jiemodui.com/rss.xml',          # 芥末堆
                 'https://www.gov.uk/government/organisations/uk-visas-and-immigration.atom',  # UKVI
@@ -112,7 +106,6 @@ class NewsFetcher:
             'uni_rankings': [
                 'https://monitor.icef.com/feed/',            # ICEF Monitor
                 'https://www.highereddive.com/feeds/news/',  # Higher Ed Dive
-                'https://www.universityaffairs.ca/feed/',    # University Affairs (Canada)
                 'https://wonkhe.com/feed/',                  # WonkHE (UK HE policy)
                 'https://thepienews.com/feed/',              # The PIE News
             ],
@@ -124,7 +117,6 @@ class NewsFetcher:
             'industry_news': [
                 'https://www.jiemodui.com/rss.xml',          # 芥末堆
                 'https://www.36kr.com/feed',                 # 36氪
-                'https://news.crunchbase.com/feed/',         # Crunchbase News
                 'https://www.highereddive.com/feeds/news/',  # Higher Ed Dive
             ],
             'education': [
@@ -425,7 +417,7 @@ class NewsFetcher:
         # 其他优质媒体：固定中等分（20分）
         quality_sources = [
             'qs', 'topuniversities', 'higher ed dive',
-            'bloomberg', 'reuters', 'crunchbase',
+            'bloomberg', 'reuters',
         ]
 
         if any(s in source for s in education_sources):
