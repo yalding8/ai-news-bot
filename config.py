@@ -17,6 +17,7 @@ def get_logger(name: str):
 # API Keys and Configuration
 _webhook_url = os.getenv('WECOM_WEBHOOK_URL', '')
 WECOM_WEBHOOK_URLS = [url.strip() for url in _webhook_url.split(',') if url.strip()]
+WECOM_OPS_WEBHOOK_URL = os.getenv('WECOM_OPS_WEBHOOK_URL', '').strip()
 DEEPSEEK_API_KEY = os.getenv('DASHSCOPE_API_KEY') or os.getenv('DEEPSEEK_API_KEY')
 TIANAPI_KEY = os.getenv('TIANAPI_KEY')
 NEWSAPI_KEY = os.getenv('NEWSAPI_KEY')

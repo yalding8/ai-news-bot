@@ -463,10 +463,11 @@ def send_daily_news(topics: list = None):
     # 解析降级，导致小程序卡片不可点（2026-04-27 验证）。
     today_date = datetime.now().strftime("%Y年%m月%d日")
     coffee_link_text = coffee_url.replace("https://", "").replace("http://", "")
+    coffee_url_utm = f"{coffee_url}?utm_source=wecom&utm_medium=group&utm_campaign=daily"
     message_parts = [
         f"📅 **异乡早咖啡 · {today_date}**",
         "更多细节见上方海报 ☝️\n",
-        f"📖 **完整阅读** → [{coffee_link_text}]({coffee_url})\n",
+        f"📖 **完整阅读** → [{coffee_link_text}]({coffee_url_utm})\n",
         "🏠 **异乡好居** - 留学生海外的家 [#小程序://异乡好居/vvS67rZGtrvbQIn]",
         "💰 **异乡缴费** - 比一比更省钱 [#小程序://异乡缴费/8d32ABZvjBHh1vd]",
         "\n💡 *Powered By 异乡有你，AI驱动 • 实时聚合全球国际教育资讯*",
@@ -481,6 +482,14 @@ def send_daily_news(topics: list = None):
         logger.info("✅ 补充文本发送成功")
     else:
         logger.error("❌ 补充文本发送失败")
+
+    # 发送昨日统计报告到运维群（失败不影响主流程）
+    try:
+        from stats_reporter import send_stats_report
+        from config import WECOM_OPS_WEBHOOK_URL
+        send_stats_report(WECOM_OPS_WEBHOOK_URL)
+    except Exception as e:
+        logger.warning(f"⚠️ 统计报告发送异常（不影响日报）: {e}")
 
 
 def fetch_topic_news_raw(topic_key: str) -> list:
