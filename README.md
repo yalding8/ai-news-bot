@@ -30,11 +30,13 @@ python -m pip install -r requirements.txt
 复制 `.env.example` 为 `.env`：
 
 ```ini
-# 必填：LLM API Key（火山方舟 Ark 或 DeepSeek 官方均可，OpenAI 兼容协议）
-DEEPSEEK_API_KEY=sk-xxxxxxxx
+# 必填：LLM API Key（阿里云百炼 DashScope，`sk-` 开头；亦兼容旧名 DEEPSEEK_API_KEY）
+DASHSCOPE_API_KEY=sk-xxxxxxxx
 
-# 可选：切换 LLM 供应商
-# 默认走火山方舟 Ark DeepSeek v3.2（国内加速、合规）
+# 可选：切换 LLM 供应商（默认走阿里云百炼 DashScope，OpenAI 兼容协议）
+# LLM_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1   # 默认
+# LLM_MODEL=deepseek-v4-pro          # 默认；新闻 cron 用 qwen-plus（fast model，~5s/call）
+# 切回火山方舟 Ark：
 # LLM_BASE_URL=https://ark.cn-beijing.volces.com/api/v3
 # LLM_MODEL=deepseek-v3-2-251201
 # 切回 DeepSeek 官方：
@@ -62,10 +64,12 @@ DINGNING_BASE_URL=https://dingning.ai
 DINGNING_DEPLOY_WAIT_SEC=60         # Vercel 部署等待秒，扣减海报已耗时后 sleep 剩余
 ```
 
+> **`.env` 是 webhook / LLM 路由的唯一真相源**：配置加载用 `load_dotenv(override=True)`，`.env` 中定义的 key 会覆盖宿主 shell 里可能残留的同名 export（2026-06 事故教训：长命 shell 残留 `WECOM_WEBHOOK_URL`/`LLM_*` 曾导致手动运行发错群）。`.env` 未定义的 key（如 CI secrets）仍从环境变量读取。
+
 ### 3. 运行
 
 ```bash
-python bot_wecom.py
+python start.py      # 入口：start.py → bot_wecom.main()
 ```
 
 ## 工作流程
@@ -167,20 +171,33 @@ ai-news-bot/
 
 ## 定时任务
 
-```bash
-# 每天早 9:10 推送新闻（北京时间）
-10 9 * * * cd /home/ops/ai-news-bot && ./venv/bin/python3 bot_wecom.py >> /var/log/ai-news.log 2>&1
+服务器 cron 由 `scripts/setup_cron.sh` 幂等安装/恢复（改排程只改该脚本再重跑；亦是 crontab 被整体重写/误删后的一键恢复——2026-05-30 集中迁移曾把本项目 cron 整条漏掉，断更 4 天）：
 
-# 每天 10:05 推送运维心跳（与 aifx 错开 5 分钟）
-5 10 * * * /home/ops/ai-news-bot/scripts/heartbeat.sh >> /home/ops/ai-news-bot/heartbeat.log 2>&1
+```bash
+# 每天早 9:10 推送新闻（北京时间）；内联 LLM_* 锁定 qwen-plus（fast model）
+10 9 * * * cd /home/ops/ai-news-bot && LLM_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1 LLM_MODEL=qwen-plus /home/ops/ai-news-bot/venv/bin/python start.py >> /home/ops/ai-news-bot/ai-news.log 2>&1
+
+# 每 5 分钟（2-57/5）jump-autodeploy 自动部署检测
+2-57/5 * * * * /opt/jump-autodeploy/bin/auto-deploy.sh /home/ops/ai-news-bot >> /home/ops/ai-news-bot/logs/auto-deploy.log 2>&1
+
+# 每天 10:00 推送运维心跳
+0 10 * * * /home/ops/ai-news-bot/scripts/heartbeat.sh >> /home/ops/ai-news-bot/heartbeat.log 2>&1
 ```
 
 > GitHub Actions 定时任务已禁用（见 `.github/workflows/daily_news.yml`），统一由服务器 cron 触发，避免双推。
 
+### 部署（2026-06 起接入集中部署器 jump-autodeploy）
+
+接入共享部署器 **`/opt/jump-autodeploy`**，取代旧版走 SSH 的 `scripts/auto_pull_deploy.sh`（服务器 deploy key 失效后该脚本长期静默失败）。本仓库是 **public**，服务器 remote 用 HTTPS（`https://github.com/yalding8/ai-news-bot.git`）即可免凭证 fetch。
+
+- **conf 驱动**（`deploy/autodeploy.conf`）：`git fetch` → `git reset --hard origin/main`（**不跑 `git clean`**，untracked `.env` / `.news_cache.json` 安全）→ `INSTALL_TRIGGER=requirements.txt` 命中才 `pip install`。无 RESTART（批量 cron job 无需重启）。
+- **首次/迁服务器接入**：① `git remote set-url origin https://github.com/yalding8/ai-news-bot.git` ② `git fetch origin && git reset --hard origin/main`（先把 conf 拉到工作树，否则 jump-autodeploy 因无 conf 返回 `exit 2` 不接管）③ `bash scripts/setup_cron.sh` 装齐三条 cron。`--dry-run; echo exit=$?` 从 `exit 2` 变 `exit 0` 即接管成功。
+- **部署告警**：jump-autodeploy 的 `lib/notify.py` **只发飞书卡片**，读 `.env` 中的 `DEPLOY_NOTIFY_WEBHOOK`（飞书运维群，与 aifx 共用频道）。**未配置该变量则部署静默无卡片**。
+- **playwright**：chromium 二进制不在 INSTALL 链里（已装且极少变）；bump playwright 后手动 `venv/bin/python -m playwright install chromium`。
+
 ### 运维通知
-- **部署成功/失败**：`scripts/auto_pull_deploy.sh`（每 2 分钟轮询）检测到新提交后自动部署，结果推送企微运维群
-- **每日心跳**：`scripts/heartbeat.sh` 每天 10:05 推送磁盘用量、cron 最近运行时间、最近部署 commit；25h 没收到 = 告警链路断
-- 以上通知读取服务器 `/home/ops/ai-news-bot/.deploy.env` 中的 `WECOM_BOT_WEBHOOK_URL`（与业务推送的 `WECOM_WEBHOOK_URL` 独立）
+- **每日心跳**：`scripts/heartbeat.sh` 每天 10:00 推送磁盘用量、cron 最近运行时间、最近部署 commit；25h 没收到 = 告警链路断。读服务器 `/home/ops/ai-news-bot/.deploy.env` 的 `WECOM_BOT_WEBHOOK_URL`（**企微**运维群，与业务推送的 `WECOM_WEBHOOK_URL` 独立）。
+- **部署成功/失败/回滚**：走 jump-autodeploy 飞书卡片（见上「部署」节，`DEPLOY_NOTIFY_WEBHOOK`），不再走旧的企微 `auto_pull_deploy.sh` 链路。
 
 ## 常见问题
 
@@ -264,6 +281,11 @@ WeCom webhook 不支持 `miniprogram_notice` 卡片类型，跨平台可点小�
 | **总计** | **¥29-36/月** |
 
 ## 更新日志
+
+### v2.5 (2026-06-02)
+- 部署接入集中部署器 `/opt/jump-autodeploy`（取代走 SSH 的 `auto_pull_deploy.sh`，deploy key 失效问题根治）；服务器 remote SSH→HTTPS（public 仓库免凭证）；新增 `deploy/autodeploy.conf` + `scripts/setup_cron.sh`（幂等装齐 news/auto-deploy/heartbeat 三条 cron，兼 crontab 被扫后一键恢复）
+- 配置加载改 `load_dotenv(override=True)`，`.env` 成为 webhook/LLM 路由唯一真相源，根治宿主 shell 残留 export 盖住 `.env` 导致的手动运行发错群 / 打错 LLM endpoint；新增 `tests/test_config_env.py`
+- 文档同步实际状态：LLM 默认已切阿里云百炼 DashScope（`deepseek-v4-pro`，新闻 cron 用 `qwen-plus`），入口 `start.py`，心跳 10:00
 
 ### v2.4 (2026-04-27)
 - 接入 dingning.ai 跨项目发布：每日 MDX 自动 commit 到 yalding8/dingning-ai 触发 Vercel 部署
