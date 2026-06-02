@@ -2,8 +2,11 @@ import os
 import logging
 from dotenv import load_dotenv
 
-# Load environment variables
-load_dotenv()
+# Load environment variables.
+# override=True: .env 是 webhook / LLM 路由的唯一真相源，覆盖宿主进程里可能残留的
+# 陈旧 export（2026-06-02 事故：长命 shell 残留 WECOM_WEBHOOK_URL/LLM_* 盖住 .env，
+# 导致手动运行发错群 / 打错 LLM endpoint）。.env 未定义的 key（如 CI secrets）不受影响。
+load_dotenv(override=True)
 
 # Configure logging
 logging.basicConfig(

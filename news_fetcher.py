@@ -15,8 +15,8 @@ from urllib3.util import Retry
 from dotenv import load_dotenv
 from config import TOPIC_KEYWORDS, NEGATIVE_KEYWORDS
 
-# 加载环境变量
-load_dotenv()
+# 加载环境变量（override=True：.env 优先于宿主残留 export，详见 config.py）
+load_dotenv(override=True)
 
 logger = logging.getLogger(__name__)
 

@@ -98,7 +98,7 @@ def diagnose_education_news():
     # 6. 检查环境变量
     print("⚙️  6. 检查环境变量")
     from dotenv import load_dotenv
-    load_dotenv()
+    load_dotenv(override=True)
     
     tianapi_key = os.getenv('TIANAPI_KEY')
     newsapi_key = os.getenv('NEWSAPI_KEY')
