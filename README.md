@@ -171,20 +171,43 @@ ai-news-bot/
 
 ## 定时任务
 
-服务器 cron 由 `scripts/setup_cron.sh` 幂等安装/恢复（改排程只改该脚本再重跑；亦是 crontab 被整体重写/误删后的一键恢复——2026-05-30 集中迁移曾把本项目 cron 整条漏掉，断更 4 天）：
+定时任务写在 **`/etc/cron.d/ai-news-bot`**（root 拥有），由 `scripts/setup_cron.sh` 幂等安装。**为什么不放用户 crontab**：2026-05-30 与 2026-06-03 两次"集中迁移"整体重写 ops 用户 crontab 时把本项目 cron 整条漏掉，静默断更（前者 4 天）。集中迁移本质是 `crontab -l > bak; crontab newfile`，**物理上碰不到 `/etc/cron.d/*`** —— 每个项目拥有自己独立、迁移脚本删不掉的调度文件，从结构上根治该故障模式。
 
 ```bash
+# /etc/cron.d 语法比用户 crontab 多一个 user 字段（这里是 ops）
 # 每天早 9:10 推送新闻（北京时间）；内联 LLM_* 锁定 qwen-plus（fast model）
-10 9 * * * cd /home/ops/ai-news-bot && LLM_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1 LLM_MODEL=qwen-plus /home/ops/ai-news-bot/venv/bin/python start.py >> /home/ops/ai-news-bot/ai-news.log 2>&1
+10 9 * * * ops cd /home/ops/ai-news-bot && LLM_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1 LLM_MODEL=qwen-plus /home/ops/ai-news-bot/venv/bin/python start.py >> /home/ops/ai-news-bot/ai-news.log 2>&1
 
 # 每 5 分钟（2-57/5）jump-autodeploy 自动部署检测
-2-57/5 * * * * /opt/jump-autodeploy/bin/auto-deploy.sh /home/ops/ai-news-bot >> /home/ops/ai-news-bot/logs/auto-deploy.log 2>&1
+2-57/5 * * * * ops /opt/jump-autodeploy/bin/auto-deploy.sh /home/ops/ai-news-bot >> /home/ops/ai-news-bot/logs/auto-deploy.log 2>&1
 
 # 每天 10:00 推送运维心跳
-0 10 * * * /home/ops/ai-news-bot/scripts/heartbeat.sh >> /home/ops/ai-news-bot/heartbeat.log 2>&1
+0 10 * * * ops /home/ops/ai-news-bot/scripts/heartbeat.sh >> /home/ops/ai-news-bot/heartbeat.log 2>&1
 ```
 
-> GitHub Actions 定时任务已禁用（见 `.github/workflows/daily_news.yml`），统一由服务器 cron 触发，避免双推。
+安装/改排程（写 `/etc/cron.d` 需 sudo；改排程或模型只改 `setup_cron.sh` 里的 `DESIRED` 再重跑，幂等）：
+
+```bash
+bash /home/ops/ai-news-bot/scripts/setup_cron.sh   # 装到 /etc/cron.d 并清掉用户 crontab 旧行防双跑
+sudo cat /etc/cron.d/ai-news-bot                   # 验证 3 行在册
+# 回滚：sudo rm /etc/cron.d/ai-news-bot
+```
+
+> ⚠️ `setup_cron.sh` 是**手动一次性脚本**，jump-autodeploy 只 `git pull` 不会自动跑它 —— 迁服务器或文件被删后须手动重跑一次。
+
+### 外部断更看门狗（dead-man's-switch）
+
+`.github/workflows/watchdog.yml`：每天 **10:30（北京）** 在 GitHub Actions 上检查 `yalding8/dingning-ai` 是否有当天的「异乡早咖啡」提交（每次成功推送都会 commit 一份 MDX）。没有 = 断更 → 企微告警 + workflow 标红。
+
+**为什么放 GitHub 而非服务器**：心跳本身是服务器 cron 的一条，集中迁移会**连心跳一起删** —— "看门狗与被监控对象同生共死"。本看门狗跑在 dingning 主机之外，哪怕整机宕机/crontab 清空/心跳没了仍能报警。
+
+需在仓库配置一个 secret（**绝不硬编码**）：
+
+```bash
+gh secret set WECOM_BOT_WEBHOOK_URL   # 企微运维群 webhook，与心跳同一个
+```
+
+> 推送本身仍统一由服务器 cron 触发（GitHub Actions 的 `daily_news.yml` 定时已禁用，避免双推）；watchdog **只监控不推送**，无双推风险。
 
 ### 部署（2026-06 起接入集中部署器 jump-autodeploy）
 
