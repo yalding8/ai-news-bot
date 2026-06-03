@@ -1,0 +1,61 @@
+name: Cron Watchdog
+
+# 外部死人开关（dead-man's-switch）：每天检查 dingning-ai 是否有当天的「异乡早咖啡」
+# 提交。每次成功推送都会 commit 一份 MDX 到 yalding8/dingning-ai —— 没有当天提交
+# = dingning 服务器上的每日推送 cron 没跑（断更）→ 企微告警 + workflow 标红。
+#
+# 关键：本检查跑在 GitHub，完全独立于 dingning 主机。哪怕主机整机宕机、crontab 被
+# 清空、心跳一起没了，这条外部监控仍会报警 —— 补的正是"看门狗与被监控对象同生共死"
+# 那个洞（心跳本身是服务器 cron 的一条，集中迁移会连它一起删）。
+#
+# 只监控、不推送，因此与已禁用的 daily_news.yml 不构成双推。
+
+on:
+  schedule:
+    # 02:30 UTC = 北京 10:30，给 09:10 推送 + Vercel 部署留 80 分钟余量。
+    - cron: '30 2 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: watchdog
+  cancel-in-progress: false
+
+jobs:
+  check:
+    name: Check daily push
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check dingning-ai for today's coffee commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          WECOM_BOT_WEBHOOK_URL: ${{ secrets.WECOM_BOT_WEBHOOK_URL }}
+        run: |
+          set -euo pipefail
+          TODAY=$(TZ=Asia/Shanghai date +%Y-%m-%d)
+          echo "检查 $TODAY（北京）的每日推送是否发生…"
+
+          # dingning-ai 是公开仓库；取最新一条提交的 committer 时间，换算到北京日期。
+          LATEST_ISO=$(gh api repos/yalding8/dingning-ai/commits --jq '.[0].commit.committer.date')
+          LATEST_BJ=$(TZ=Asia/Shanghai date -d "$LATEST_ISO" +%Y-%m-%d)
+          echo "dingning-ai 最新提交（北京日）：$LATEST_BJ"
+
+          if [ "$LATEST_BJ" = "$TODAY" ]; then
+            echo "✅ 今天已推送，无需告警"
+            exit 0
+          fi
+
+          echo "❌ 断更：$TODAY 无推送，最新止于 $LATEST_BJ"
+          if [ -z "${WECOM_BOT_WEBHOOK_URL:-}" ]; then
+            echo "::error::断更且未配置 WECOM_BOT_WEBHOOK_URL secret，无法企微告警。请在仓库 Settings → Secrets 添加。"
+            exit 1
+          fi
+
+          MSG="**日期**：${TODAY}\n**现象**：未检测到 dingning-ai 当天推送提交（最新止于 ${LATEST_BJ}）\n**排查**：登 dingning 服务器查 \`/etc/cron.d/ai-news-bot\` 是否还在、\`ai-news.log\` 末尾报错；必要时 \`bash /home/ops/ai-news-bot/scripts/setup_cron.sh\` 重装。"
+          curl -s --max-time 10 -X POST -H 'Content-Type: application/json' \
+            -d "{\"msgtype\":\"markdown\",\"markdown\":{\"content\":\"## 🚨 ai-news-bot 断更告警\n${MSG}\"}}" \
+            "$WECOM_BOT_WEBHOOK_URL" >/dev/null
+          echo "::error::断更告警已发送企微"
+          exit 1
