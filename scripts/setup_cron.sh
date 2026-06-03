@@ -41,7 +41,7 @@ MAILTO=""
 # ai-news-bot cron — 由 scripts/setup_cron.sh 幂等生成，勿手改。
 # 位置在 /etc/cron.d 而非用户 crontab：集中迁移重写用户 crontab 时碰不到本文件。
 2-57/5 * * * * ${RUN_USER} /opt/jump-autodeploy/bin/auto-deploy.sh ${APP_DIR} >> ${APP_DIR}/logs/auto-deploy.log 2>&1
-10 9 * * * ${RUN_USER} cd ${APP_DIR} && LLM_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1 LLM_MODEL=qwen-plus ${APP_DIR}/venv/bin/python start.py >> ${APP_DIR}/ai-news.log 2>&1
+10 9 * * * ${RUN_USER} cd ${APP_DIR} && LLM_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1 LLM_MODEL=qwen-plus ${APP_DIR}/venv/bin/python start.py >> ${APP_DIR}/ai-news.log 2>&1 && curl -fsS -m 10 --retry 2 "https://hc-ping.com/\$(cat /home/ops/.hc-ping-key 2>/dev/null)/ai-news-daily" >/dev/null 2>&1
 0 10 * * * ${RUN_USER} ${APP_DIR}/scripts/heartbeat.sh >> ${APP_DIR}/heartbeat.log 2>&1
 CRON
 )"
