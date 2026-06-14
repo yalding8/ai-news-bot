@@ -4,6 +4,9 @@ extend-exclude = ["venv", "venv-local", ".hypothesis", "__pycache__", "out"]
 # 沿用 ruff 默认规则集（E4/E7/E9 + F），不引入行长(E501)等风格噪音
 
 [tool.pytest.ini_options]
+# 项目模块在仓库根目录（扁平布局）。显式把根加入 sys.path，
+# 这样 `pytest` 控制台脚本（CI 用）和 `python -m pytest` 都能 import 到。
+pythonpath = ["."]
 markers = [
     "unit: 纯单元测试（无外部依赖）",
     "network: 需要访问外网（CI 默认跳过：pytest -m 'not network'）",
