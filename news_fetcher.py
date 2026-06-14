@@ -7,8 +7,7 @@ import os
 import requests
 import feedparser
 import logging
-from datetime import datetime
-from typing import List, Dict, Optional, Any
+from typing import List, Dict, Any
 from requests.adapters import HTTPAdapter
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 from urllib3.util import Retry
@@ -443,7 +442,7 @@ class NewsFetcher:
         # 5. 时效性评分 (20分) - 新增
         try:
             from dateutil import parser
-            from datetime import datetime, timezone
+            from datetime import datetime
             
             # 使用现有方法检查，但这里我们计算具体天数给分
             cleaned_time = self.clean_rss_time(news.get('time', ''))
@@ -466,7 +465,7 @@ class NewsFetcher:
                     score += 10
                 elif days < 7: # 一周内
                     score += 5
-        except:
+        except Exception:
             pass # 解析失败不加分
 
         # ========== Phase 1 新增：负面关键词惩罚 ==========
@@ -831,7 +830,7 @@ class NewsFetcher:
             
         try:
             from dateutil import parser
-            from datetime import datetime, timedelta, timezone
+            from datetime import datetime, timezone
             
             # 解析新闻时间
             # 先进行清洗

@@ -8,7 +8,7 @@ import os
 import json
 import hashlib
 from datetime import datetime, timedelta
-from typing import List, Dict, Set
+from typing import List, Dict
 from config import get_logger
 
 logger = get_logger(__name__)

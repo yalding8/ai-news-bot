@@ -12,7 +12,6 @@ https://docs.github.com/en/rest/repos/contents#create-or-update-file-contents
 """
 
 import base64
-import json
 from datetime import datetime
 from typing import Optional
 

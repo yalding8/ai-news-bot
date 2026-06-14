@@ -10,7 +10,7 @@ import shutil
 import subprocess
 import tempfile
 from pathlib import Path
-from typing import Generator, Dict, Any
+from typing import Generator, Dict
 import pytest
 
 
