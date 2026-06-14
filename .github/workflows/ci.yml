@@ -36,5 +36,9 @@ jobs:
         run: ruff check .
 
       - name: Test (pytest)
+        # bot_wecom 在 import 时即构造 OpenAI 客户端，需要非空 key；
+        # 单测全程 mock 网络，不会真正调用 API，给个占位 key 即可。
+        env:
+          DEEPSEEK_API_KEY: ci-dummy-key-not-used
         # 跳过需要外网的 RSS 抓取测试（-m network），保证 CI 确定性
         run: pytest -m "not network" -q
