@@ -1,0 +1,44 @@
+name: CI
+
+# 仅在 PR 触发：PR 合并即 push to main，若再监听 push 会让每次合并 CI 跑两遍。
+on:
+  pull_request:
+
+# 同一 PR 连续 push 时取消前一次运行，省 Actions 分钟。
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  lint-test:
+    name: Lint & Test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt -r requirements-dev.txt
+
+      # fail-fast：静态检查在测试之前，lint 挂了直接退出不浪费跑测试的时间
+      - name: Lint (ruff)
+        run: ruff check .
+
+      - name: Test (pytest)
+        # bot_wecom 在 import 时即构造 OpenAI 客户端，需要非空 key；
+        # 单测全程 mock 网络，不会真正调用 API，给个占位 key 即可。
+        env:
+          DEEPSEEK_API_KEY: ci-dummy-key-not-used
+        # 跳过需要外网的 RSS 抓取测试（-m network），保证 CI 确定性
+        run: pytest -m "not network" -q

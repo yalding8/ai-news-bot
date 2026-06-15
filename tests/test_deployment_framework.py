@@ -6,7 +6,6 @@ all fixtures are working correctly before running property-based tests.
 """
 
 import pytest
-from pathlib import Path
 from hypothesis import given, strategies as st
 from conftest import (
     app_name_strategy,

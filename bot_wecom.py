@@ -7,10 +7,10 @@ AI新闻 企业微信群机器人版本
 
 import requests
 from datetime import datetime
+from pathlib import Path
 from requests.adapters import HTTPAdapter
 from urllib3.util import Retry
 import concurrent.futures
-import threading
 from typing import Dict
 
 from config import (
@@ -172,17 +172,17 @@ def process_topic_news(topic_key: str) -> Dict:
     
     try:
         # 1. 获取新闻
-        logger.info(f"  └─ 从所有新闻源获取真实新闻（API + RSS）...")
+        logger.info("  └─ 从所有新闻源获取真实新闻（API + RSS）...")
         keywords = TOPIC_KEYWORDS.get(topic_key, [topic_key])
         all_news = news_fetcher.fetch_news(topic_key, keywords, num=15)
         
         # 2. 过滤
-        logger.info(f"  └─ 过滤重复新闻...")
+        logger.info("  └─ 过滤重复新闻...")
         real_news = filter_new_news(topic_key, all_news)
 
         if not real_news:
             if not all_news:
-                logger.warning(f"  └─ 未获取到真实新闻")
+                logger.warning("  └─ 未获取到真实新闻")
                 return {
                     "success": True,
                     "topic_key": topic_key,

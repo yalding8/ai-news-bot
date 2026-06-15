@@ -7,9 +7,7 @@ from __future__ import annotations
 
 import base64
 import mimetypes
-import os
 import re
-import tempfile
 from datetime import date
 from pathlib import Path
 from typing import TypedDict

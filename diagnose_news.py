@@ -57,7 +57,7 @@ def diagnose_education_news():
         print(f"   原始新闻数量: {len(all_news)}")
         
         if all_news:
-            print(f"   新闻来源统计:")
+            print("   新闻来源统计:")
             sources = {}
             for news in all_news:
                 source = news.get('source', 'Unknown')
@@ -65,7 +65,7 @@ def diagnose_education_news():
             for source, count in sources.items():
                 print(f"     - {source}: {count}条")
             
-            print(f"\n   前3条新闻:")
+            print("\n   前3条新闻:")
             for i, news in enumerate(all_news[:3], 1):
                 print(f"   {i}. {news['title']}")
                 print(f"      来源: {news['source']}")

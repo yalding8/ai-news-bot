@@ -1,4 +1,3 @@
-import types
 import unittest
 from unittest import mock
 
@@ -21,9 +20,10 @@ class TestBotWecom(unittest.TestCase):
         bot_wecom.WECOM_WEBHOOK_URLS = ["https://example.com/webhook"]
 
     def test_parse_active_topics_filters_unknown(self):
-        raw = "ai,unknown,,education"
+        # finance/education 为合法主题；unknown 与空串应被过滤掉，保留原顺序
+        raw = "finance,unknown,,education"
         topics = bot_wecom.parse_active_topics(raw)
-        self.assertEqual(topics, ["ai", "education"])
+        self.assertEqual(topics, ["finance", "education"])
 
     def test_send_wecom_message_success(self):
         fake_resp = FakeResponse(status_code=200, json_data={"errcode": 0})

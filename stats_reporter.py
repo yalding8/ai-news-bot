@@ -7,7 +7,7 @@
 """
 
 import requests
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 
 from config import get_logger, DINGNING_BASE_URL
 

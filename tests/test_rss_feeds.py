@@ -1,11 +1,15 @@
-import feedparser
 import concurrent.futures
+
+import feedparser
+import pytest
+
 from news_fetcher import NewsFetcher
 
+
+@pytest.mark.network
 def test_feeds():
     fetcher = NewsFetcher()
-    results = {}
-    
+
     print("Testing RSS Feeds...")
     print("-" * 60)
     print(f"{'Source':<40} | {'Status':<10} | {'Items':<5} | {'Latest Date'}")
