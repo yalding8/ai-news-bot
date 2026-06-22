@@ -48,25 +48,52 @@ _SQUARE_RATIO_LO = 0.8   # 宽高比落在 [LO, HI] 视为"接近正方形"
 _SQUARE_RATIO_HI = 1.25
 _SQUARE_SAFE_WIDTH = 1000  # 接近正方形但宽度 ≥ 此值时，可能是真实大图，放行
 
+# 白底拼图门：PIE News 对 M&A/交易类报道惯用"白底 + 几个公司 logo 并排"当 og:image
+# （典型例子：Crizac 收购 ForeignAdmits → 白底贴两个 logo）。这种图宽幅、尺寸大、非正方，
+# 躲过上面两道门，却在 1080×560 cover 裁切里把右侧 logo 切烂（"ForeignAdm"）。
+# 共同特征：大面积近白背景 + 中间小色块。真实新闻照片几乎不会有 >55% 的近白像素。
+# 命中后海报自动走"大数字装饰"兜底（本例可抽标题里的 37% 做巨型装饰，更干净）。
+_NEAR_WHITE_MIN = 232               # RGB 三通道均 ≥ 此值视为"近白"
+_WHITESPACE_REJECT_FRAC = 0.55      # 近白像素占比 ≥ 此值 → 判为 logo 拼图，拒绝
+
+
+def _near_white_fraction(im) -> float:
+    """近白像素占比（缩到 64×64 缩略图上算，足够判背景占比又快）。"""
+    small = im.convert("RGB").resize((64, 64))
+    px = list(small.getdata())
+    near = sum(
+        1 for r, g, b in px
+        if r >= _NEAR_WHITE_MIN and g >= _NEAR_WHITE_MIN and b >= _NEAR_WHITE_MIN
+    )
+    return near / len(px) if px else 0.0
+
 
 def _is_usable_cover(path: Path) -> bool:
-    """判断下载到的图片是否适合做头条封面 banner（挡掉 logo/图标类）。"""
+    """判断下载到的图片是否适合做头条封面 banner（挡掉 logo/图标/拼图类）。"""
     try:
         from PIL import Image
 
         with Image.open(path) as im:
             w, h = im.size
+
+            if w < _MIN_COVER_WIDTH or h < _MIN_COVER_HEIGHT:
+                logger.info(f"cover rejected (too small {w}x{h}): {path}")
+                return False
+
+            ratio = w / h if h else 0
+            if _SQUARE_RATIO_LO <= ratio <= _SQUARE_RATIO_HI and w < _SQUARE_SAFE_WIDTH:
+                logger.info(f"cover rejected (logo-like square {w}x{h}): {path}")
+                return False
+
+            white_frac = _near_white_fraction(im)
     except Exception as e:
         logger.warning(f"cover image unreadable, rejected [{path}]: {e}")
         return False
 
-    if w < _MIN_COVER_WIDTH or h < _MIN_COVER_HEIGHT:
-        logger.info(f"cover rejected (too small {w}x{h}): {path}")
-        return False
-
-    ratio = w / h if h else 0
-    if _SQUARE_RATIO_LO <= ratio <= _SQUARE_RATIO_HI and w < _SQUARE_SAFE_WIDTH:
-        logger.info(f"cover rejected (logo-like square {w}x{h}): {path}")
+    if white_frac >= _WHITESPACE_REJECT_FRAC:
+        logger.info(
+            f"cover rejected (logo-collage on white, {white_frac:.0%} near-white): {path}"
+        )
         return False
 
     return True

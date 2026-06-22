@@ -9,13 +9,23 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PIL import Image
+from PIL import Image, ImageDraw
 
 import image_fetcher
 
 
 def _make_image(path: Path, w: int, h: int, color=(120, 140, 255)) -> Path:
     Image.new("RGB", (w, h), color).save(path, "JPEG")
+    return path
+
+
+def _make_logo_collage(path: Path, w: int, h: int) -> Path:
+    """白底 + 两个并排小 logo 色块（模拟 PIE News M&A 报道的 og:image）。"""
+    im = Image.new("RGB", (w, h), (255, 255, 255))
+    d = ImageDraw.Draw(im)
+    d.rectangle([w * 0.10, h * 0.35, w * 0.32, h * 0.65], fill=(40, 120, 200))
+    d.rectangle([w * 0.62, h * 0.35, w * 0.84, h * 0.65], fill=(200, 60, 40))
+    im.save(path, "JPEG")
     return path
 
 
@@ -47,6 +57,17 @@ class TestIsUsableCover:
         p = tmp_path / "broken.jpg"
         p.write_bytes(b"not an image")
         assert image_fetcher._is_usable_cover(p) is False
+
+    def test_rejects_wide_logo_collage_on_white(self, tmp_path):
+        # PIE News M&A 报道 og:image：宽幅 + 尺寸大 + 非正方，躲过尺寸/正方门，
+        # 但白底占比高（~88%）应被新增的白底门拦下（Crizac×ForeignAdmits 案例）。
+        p = _make_logo_collage(tmp_path / "collage.jpg", 1200, 630)
+        assert image_fetcher._is_usable_cover(p) is False
+
+    def test_accepts_photo_like_non_white(self, tmp_path):
+        # 真实照片：满幅非白内容，白底占比低，应放行。
+        p = _make_image(tmp_path / "photo.jpg", 1200, 630, color=(70, 110, 90))
+        assert image_fetcher._is_usable_cover(p) is True
 
 
 class TestFetchArticleImageGate:
