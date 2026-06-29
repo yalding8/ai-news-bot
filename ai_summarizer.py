@@ -1,5 +1,6 @@
 import json
 import re
+from datetime import datetime
 
 from openai import OpenAI
 from config import DEEPSEEK_API_KEY, LLM_BASE_URL, LLM_MODEL, NEWS_TOPICS, get_logger
@@ -78,35 +79,46 @@ class AISummarizer:
             logger.error(f"❌ AI总结失败: {e}")
             return self._fallback_summary(news_list, topic_info['name'])
 
-    def summarize_for_poster(self, news_list: list, news_text: str) -> list | None:
+    def summarize_for_poster(self, news_list: list, news_text: str,
+                             today: datetime | None = None) -> list | None:
         """
         为海报生成结构化摘要：5 条（hero + 4 items），每条含
         title_zh / title_en / summary / punch / source_title。
+
+        today: 当前日期，用于把原文里"今年/明年/上月"等相对时间锚定成绝对年份，
+        避免 LLM 在没有日期参照系时幻觉出错误年份（如把"今年9月"写成"2024年9月"）。
+        默认取 datetime.now()。
 
         返回 list[dict]，失败返回 None（调用方走降级）。
         """
         if not news_list:
             return None
 
+        if today is None:
+            today = datetime.now()
+        date_iso = today.strftime("%Y-%m-%d")
+
         take = min(5, len(news_list))
         logger.info(f"  └─ AI 为海报生成结构化摘要（{take} 条）…")
 
-        prompt = f"""你是一位国际教育行业日报主编，下面是今日 {len(news_list)} 条候选新闻：
+        prompt = f"""你是一位国际教育行业日报主编。今天是 {date_iso}。下面是今日 {len(news_list)} 条候选新闻：
 
 {news_text}
 
 请从中挑选最重要的 {take} 条（第 1 条为当日头条，其余按重要性排序），为每条生成以下 5 个字段：
 - title_zh: 中文标题（12-22 字，精炼有力，可含数字/百分比/国家名，不要加引号）
 - title_en: 英文标题（必须完全复制候选新闻的原始标题，逐字一致）
-- summary: 中文摘要 1-2 句（40-80 字，含关键数据如金额/百分比/时间，不要口号）
+- summary: 中文摘要 1-2 句（40-80 字，可含原文出现的关键数据如金额/百分比/日期，不要口号）
 - punch: 一句点睛（15-30 字，给留学生家长的行动建议或洞察，例如"申请季家长需关注签证拒签率变化"）
 - source: 来源（从原始新闻提取，如 "The PIE News" / "Higher Ed Dive"）
 
 ⚠️ 严格要求：
 1. 只从给定候选新闻中选，禁止编造
 2. title_en 必须逐字复制原始标题
-3. 输出**合法 JSON**，结构为 {{"items": [...]}}，不要在 JSON 外输出任何文字、解释、markdown 代码块标记
-4. 不要使用 ```json``` 包裹
+3. 反编造：summary 只能使用候选新闻原文出现的数字与日期；原文没有的具体年份/金额/百分比一律不得自行补全，宁可省略或用相对表述
+4. 时间锚定：原文若用"今年/明年/上月/本周"等相对时间，必须按今天（{date_iso}）换算成绝对年份再写（例如今天是 2026 年时，"今年9月"应写为"2026年9月"），禁止凭空猜年份
+5. 输出**合法 JSON**，结构为 {{"items": [...]}}，不要在 JSON 外输出任何文字、解释、markdown 代码块标记
+6. 不要使用 ```json``` 包裹
 
 请直接输出 JSON："""
 
