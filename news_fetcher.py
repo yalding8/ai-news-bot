@@ -115,12 +115,12 @@ class NewsFetcher:
             ],
             'industry_news': [
                 'https://www.jiemodui.com/rss.xml',          # 芥末堆
-                'https://www.36kr.com/feed',                 # 36氪
+                # 36氪通用 feed 已移除：泛商业科技快讯污染国际教育主题（见 _is_low_value_url）
                 'https://www.highereddive.com/feeds/news/',  # Higher Ed Dive
             ],
             'education': [
                 'https://www.jiemodui.com/rss.xml',          # 芥末堆
-                'https://www.36kr.com/feed',                 # 36氪
+                # 36氪通用 feed 已移除：泛商业科技快讯污染国际教育主题（见 _is_low_value_url）
                 'https://www.insidehighered.com/rss.xml',    # Inside Higher Ed
                 'https://www.highereddive.com/feeds/news/',  # Higher Ed Dive
             ],
@@ -131,6 +131,17 @@ class NewsFetcher:
                 'https://www.36kr.com/feed',
             ],
         }
+
+    def _is_low_value_url(self, url: str) -> bool:
+        """判定低价值/不可核验链接，抓取阶段直接丢弃。
+
+        目前针对 36氪快讯（`/newsflashes/<纯数字>`）：slug 是无意义数字 ID，
+        既是泛商业噪音、又无法事后按 slug 语义核验/去重。常规文章页
+        （如 `36kr.com/p/<id>`）不受影响。
+        """
+        if not url:
+            return False
+        return "/newsflashes/" in url.lower()
 
     def _normalize_url(self, url: str) -> str:
         """规范化URL用于去重：去掉追踪参数、fragment，统一host/scheme并排序query。"""
@@ -725,11 +736,16 @@ class NewsFetcher:
                     # 尝试多种时间字段
                     pub_time = entry.get('published', entry.get('updated', entry.get('pubDate', '')))
                     entry_id = entry.get('id', entry.get('guid', ''))
+                    entry_url = entry.get('link', '')
+                    # 丢弃低价值/不可核验链接（如 36氪快讯 /newsflashes/<数字>）
+                    if self._is_low_value_url(entry_url):
+                        logger.debug(f"🗑️ 跳过低价值链接: {entry.get('title', '')[:40]}... ({entry_url})")
+                        continue
                     news_item = {
                         'title': entry.get('title', ''),
                         'description': entry.get('summary', entry.get('description', ''))[:200],
                         'source': feed.feed.get('title', 'RSS'),
-                        'url': entry.get('link', ''),
+                        'url': entry_url,
                         'id': entry_id,
                         'time': pub_time
                     }
