@@ -29,6 +29,25 @@ logger = get_logger(__name__)
 GITHUB_API_BASE = "https://api.github.com"
 
 
+def _normalize_title(title: str) -> str:
+    """归一化标题用于匹配：转小写 + 折叠空白 + 去首尾空白。
+
+    poster_item.title_en 要求逐字复制原始 title，但 LLM 可能引入大小写/
+    多余空白差异，故匹配前先归一化。
+    """
+    return " ".join((title or "").lower().split())
+
+
+def _build_title_index(top_news: list) -> dict:
+    """{归一化原始标题: news} 查找表，用 title_en 把 poster_item 映射回源新闻。"""
+    index = {}
+    for news in top_news:
+        key = _normalize_title(news.get("title", ""))
+        if key and key not in index:
+            index[key] = news
+    return index
+
+
 def _build_mdx(top_news: list, poster_items: list, today: datetime) -> str:
     """从 top_news（原始新闻）+ poster_items（AI 中文化结构）生成 MDX 文本。
 
@@ -58,13 +77,22 @@ def _build_mdx(top_news: list, poster_items: list, today: datetime) -> str:
         "",
     ]
 
-    for idx in range(n_items):
-        item = poster_items[idx]
-        news = top_news[idx]
-        title_zh = (item.get("title_zh") or item.get("title_en") or news.get("title", "")).strip()
+    # poster_items 是 LLM 重排/重选后的顺序，与 top_news 不对齐。
+    # 用 title_en 逐字匹配回源新闻，取其 url —— 绝不按位置下标拉链。
+    title_index = _build_title_index(top_news)
+    n_unmatched = 0
+
+    for idx, item in enumerate(poster_items[:n_items]):
+        news = title_index.get(_normalize_title(item.get("title_en", "")))
+        title_zh = (item.get("title_zh") or item.get("title_en") or "").strip()
         punch = (item.get("punch") or "").strip()
-        source = (item.get("source") or news.get("source") or "原文").strip()
-        url = news.get("url", "").strip()
+        source = (item.get("source") or (news.get("source") if news else "") or "原文").strip()
+        url = news.get("url", "").strip() if news else ""
+
+        if news is None:
+            # 匹配不上宁缺毋错：不输出错链（容忍式跳过，带响计数）
+            n_unmatched += 1
+            logger.warning(f"⚠️ MDX 第 {idx+1} 条 title_en 未匹配到源新闻，省略原文链接: {item.get('title_en', '')[:60]}")
 
         lines.append(f"### {idx + 1}. {title_zh}")
         if punch:
@@ -72,6 +100,9 @@ def _build_mdx(top_news: list, poster_items: list, today: datetime) -> str:
         if url:
             lines.append(f"**[原文 →]({url})** {source}")
         lines.append("")
+
+    if n_unmatched:
+        logger.warning(f"⚠️ MDX 共 {n_unmatched}/{n_items} 条 title_en 未匹配源新闻")
 
     return "\n".join(lines)
 
