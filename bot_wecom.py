@@ -235,11 +235,20 @@ def build_poster_data(top_news: list, poster_items: list) -> PosterData:
     from datetime import datetime
     from pathlib import Path
 
+    from dingning_publisher import _build_title_index, _normalize_title
+
     today = datetime.now()
 
+    # poster_items 是 LLM 重排/重选后的顺序，与 top_news 不对齐。
+    # 用 title_en 逐字匹配回源新闻，绝不按位置下标拉链。
+    title_index = _build_title_index(top_news)
+
+    def _match(item: dict) -> dict:
+        return title_index.get(_normalize_title(item.get("title_en", "")), {})
+
     # hero 封面：抓文章 og:image（失败则留空，走海报的大数字兜底）
-    hero_raw = top_news[0] if top_news else {}
     hero_item = poster_items[0] if poster_items else {}
+    hero_raw = _match(hero_item) if poster_items else (top_news[0] if top_news else {})
     hero_image_path = ""
     if hero_raw.get("url"):
         try:
@@ -424,7 +433,9 @@ def send_daily_news(topics: list = None):
     coffee_url = f"{DINGNING_BASE_URL}/coffee"
     publish_start = None
     if poster_items:
-        publish_result = publish_to_dingning(top_news[:5], poster_items[:5])
+        # 传全部 9 条候选（不是 [:5]）：poster_items 是 LLM 从 9 条里选的 top-5，
+        # 选中项可能落在 top_news 后段，需全集才能按 title_en 匹配回链接（链接兜底）
+        publish_result = publish_to_dingning(top_news, poster_items[:5])
         coffee_url = publish_result["url"]
         if publish_result["success"]:
             publish_start = time.time()
