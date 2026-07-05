@@ -34,11 +34,10 @@ LLM_MODEL = os.getenv('LLM_MODEL', 'deepseek-v4-pro')
 
 
 # Active Topics
-# 默认仅推送国际教育相关主题；如需扩展可通过 ACTIVE_TOPICS 环境变量覆盖
-ACTIVE_TOPICS_ENV = os.getenv(
-    'ACTIVE_TOPICS',
-    'study_abroad,market_data,industry_news,edu_policy,uni_rankings'
-)
+# 默认仅推送国际教育相关主题；如需扩展可通过 ACTIVE_TOPICS 环境变量覆盖。
+# DEFAULT 同时是 bot_wecom.main() 在 ACTIVE_TOPICS 全为未知主题时的兜底值。
+ACTIVE_TOPICS_DEFAULT = 'study_abroad,market_data,industry_news,edu_policy,uni_rankings'
+ACTIVE_TOPICS_ENV = os.getenv('ACTIVE_TOPICS', ACTIVE_TOPICS_DEFAULT)
 
 # Topic Aliases (backward compatibility for old env values)
 TOPIC_ALIASES = {
@@ -136,29 +135,8 @@ TOPIC_KEYWORDS = {
     'uhomes': ['异乡好居', 'Uhomes']
 }
 
-# ========== Phase 1 扩展：关键词库 ==========
-
-# 1. 硬过滤词（必须命中，否则淘汰）
-HARD_FILTER_KEYWORDS = [
-    # 留学核心
-    'study abroad', 'international students', 'overseas education',
-    'visa', 'admissions', 'scholarship', 'tuition', 'immigration',
-    '留学', '签证', '招生', '申请', '移民', '奖学金',
-
-    # 政策核心
-    'policy', 'regulation', 'deadline', 'application portal',
-    '政策', '新规', '截止日期', '申请系统',
-
-    # 招生核心
-    'acceptance', 'offer', 'waitlist', 'rejection', 'decision',
-    '录取', 'offer', '候补名单', '拒信', '放榜',
-
-    # 数据核心
-    'report', 'statistics', 'survey', 'white paper', 'ranking',
-    '报告', '数据', '统计', '白皮书', '排名'
-]
-
-# 2. 负面关键词（一票否决）
+# 负面关键词（一票否决；抓取层 contains_negative_keywords 与评分层
+# calculate_news_quality 的 -20 惩罚共用这份单一真相源）
 NEGATIVE_KEYWORDS = [
     # K12教育（不需要）
     '早教', '幼教', '幼儿园', '托育', '保育',             # Early Education
@@ -184,13 +162,3 @@ NEGATIVE_KEYWORDS = [
     # 特定品牌（噪音）
     '金宝贝', '美吉姆', '猿辅导', '作业帮', '火花思维', '编程猫',
 ]
-
-# 3. 软过滤辅助词（加分项）
-PRIORITY_KEYWORDS = {
-    'policy': ['visa policy', 'immigration', 'regulation', '签证政策', '新规', '政策发布'],
-    'admissions': ['admissions', 'deadline', 'acceptance rate', '录取率', '申请截止'],
-    'data': ['report', 'statistics', 'survey', 'white paper', '报告', '数据', '白皮书'],
-    'official': ['official', 'government', 'ministry', '官方', '教育部', '移民局']
-}
-
-# ================================================

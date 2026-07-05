@@ -11,12 +11,12 @@ from pathlib import Path
 from requests.adapters import HTTPAdapter
 from urllib3.util import Retry
 import concurrent.futures
-from typing import Dict
 
 from config import (
-    WECOM_WEBHOOK_URLS, 
-    NEWS_TOPICS, 
-    ACTIVE_TOPICS_ENV, 
+    WECOM_WEBHOOK_URLS,
+    NEWS_TOPICS,
+    ACTIVE_TOPICS_ENV,
+    ACTIVE_TOPICS_DEFAULT,
     TOPIC_ALIASES,
     SEND_WHEN_NO_NEW,
     EDUCATION_RELEVANT_KEYWORDS,
@@ -158,73 +158,6 @@ def send_wecom_message(content: str, msgtype: str = "text") -> bool:
             all_success = False
 
     return all_success
-
-
-def process_topic_news(topic_key: str) -> Dict:
-    """
-    处理单个主题的新闻（获取 -> 总结 -> 返回结构化数据）
-    """
-    topic_cfg = NEWS_TOPICS.get(topic_key)
-    if not topic_cfg:
-        return {"success": False, "error": f"未找到主题配置: {topic_key}"}
-    
-    logger.info(f"🚀 开始处理主题: {topic_cfg['name']}")
-    
-    try:
-        # 1. 获取新闻
-        logger.info("  └─ 从所有新闻源获取真实新闻（API + RSS）...")
-        keywords = TOPIC_KEYWORDS.get(topic_key, [topic_key])
-        all_news = news_fetcher.fetch_news(topic_key, keywords, num=15)
-        
-        # 2. 过滤
-        logger.info("  └─ 过滤重复新闻...")
-        real_news = filter_new_news(topic_key, all_news)
-
-        if not real_news:
-            if not all_news:
-                logger.warning("  └─ 未获取到真实新闻")
-                return {
-                    "success": True,
-                    "topic_key": topic_key,
-                    "topic_name": topic_cfg['name'],
-                    "emoji": topic_cfg['emoji'],
-                    "content": "⚠️ 暂时无法获取实时新闻，可能API配额耗尽或网络问题。",
-                    "news_links": []
-                }
-            else:
-                logger.info(f"  └─ 今日{topic_cfg['name']}暂无新内容")
-                return {
-                    "success": True,
-                    "topic_key": topic_key,
-                    "topic_name": topic_cfg['name'],
-                    "emoji": topic_cfg['emoji'],
-                    "content": "✅ 今日暂无新内容（已自动过滤重复资讯）",
-                    "news_links": []
-                }
-
-        logger.info(f"  └─ 获取到 {len(real_news)} 条真实新闻")
-        news_text = news_fetcher.format_news_for_ai(real_news)
-
-        # 3. AI 总结
-        ai_summary = ai_summarizer.summarize_news(topic_key, real_news, news_text)
-        logger.info(f"✅ {topic_cfg['name']} 总结完成")
-        
-        # 4. 标记新闻为已推送
-        mark_news_as_sent(topic_key, real_news)
-
-        # 5. 构造返回结果
-        return {
-            "success": True,
-            "topic_key": topic_key,
-            "topic_name": topic_cfg['name'],
-            "emoji": topic_cfg['emoji'],
-            "content": ai_summary,
-            "news_links": [{"title": n['title'], "url": n['url']} for n in real_news[:3]]
-        }
-
-    except Exception as e:
-        logger.error(f"❌ 处理主题 {topic_key} 失败: {e}")
-        return {"success": False, "error": str(e), "topic_key": topic_key}
 
 
 def build_poster_data(top_news: list, poster_items: list) -> PosterData:
@@ -573,7 +506,9 @@ def main():
         # 解析环境变量决定推送哪些主题
         active_topics = parse_active_topics(ACTIVE_TOPICS_ENV)
         if not active_topics:
-            active_topics = ['ai', 'education']
+            # ACTIVE_TOPICS 全为未知主题时回退默认教育主题集
+            logger.warning("⚠️ ACTIVE_TOPICS 未解析出有效主题，回退默认主题集")
+            active_topics = parse_active_topics(ACTIVE_TOPICS_DEFAULT)
 
         logger.info(f"📡 开始执行新闻任务（{len(active_topics)}个主题）...")
         send_daily_news(active_topics)

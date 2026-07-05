@@ -40,7 +40,8 @@ jobs:
           WECOM_WEBHOOK_URL: ${{ secrets.WECOM_WEBHOOK_URL }}
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
           TIANAPI_KEY: ${{ secrets.TIANAPI_KEY }}
-          ACTIVE_TOPICS: ${{ secrets.ACTIVE_TOPICS || 'ai,education' }}
+          # 与 config.ACTIVE_TOPICS_DEFAULT 保持一致（'ai' 主题已废弃）
+          ACTIVE_TOPICS: ${{ secrets.ACTIVE_TOPICS || 'study_abroad,market_data,industry_news,edu_policy,uni_rankings' }}
           PYTHONUNBUFFERED: 1
         run: python bot_wecom.py
 

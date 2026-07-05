@@ -494,26 +494,15 @@ class NewsFetcher:
         except Exception:
             pass # 解析失败不加分
 
-        # ========== Phase 1 新增：负面关键词惩罚 ==========
-        # 6. 负面关键词检测（-20分）
-        negative_keywords = [
-            # 金融类
-            '港股', 'a股', '证券', '基金', '煤炭', '钢铁', '房地产', '地产',
-            # 娱乐类
-            '游戏', '电竞', '直播', '网红', '带货',
-            # 技术类（不相关）
-            '漏洞', '渗透测试', 'sql注入', 'ciso',
-            # 国内考试
-            '考研', '公务员', '公考', '事业单位'
-        ]
-
+        # 6. 负面关键词惩罚（-20分）。词表单一真相源 config.NEGATIVE_KEYWORDS；
+        # fetch_news 管线里含负面词的新闻已被 contains_negative_keywords 一票否决，
+        # 此处惩罚是对直接调用本评分函数场景的兜底。
         text_lower = (title + ' ' + description).lower()
-        for neg_kw in negative_keywords:
-            if neg_kw in text_lower:
+        for neg_kw in NEGATIVE_KEYWORDS:
+            if neg_kw.lower() in text_lower:
                 score -= 20
                 logger.debug(f"⚠️ 负面关键词惩罚(-20): {neg_kw} | {title[:40]}")
                 break  # 只惩罚一次
-        # ================================================
 
         # ========== Phase 1 新增：信号等级加权 ==========
         signal_level = self.classify_signal_level(news)
