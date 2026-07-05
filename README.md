@@ -142,12 +142,16 @@ ai-news-bot/
 ├── ai_summarizer.py        # AI摘要：DeepSeek调用
 ├── news_cache.py           # 缓存管理：24小时去重
 ├── poster_generator.py     # 海报渲染：PIL → PNG
-├── image_fetcher.py        # 文章封面抓取（og:image）
+├── image_fetcher.py        # 文章封面抓取（og:image，含质量门：拒绝 logo/小图/白底拼图）
 ├── dingning_publisher.py   # dingning.ai 跨项目发布（GitHub Contents API）
 ├── config.py               # 配置：主题、关键词、RSS源、跨项目参数
-├── requirements.txt        # Python依赖
+├── requirements.txt        # Python运行依赖
+├── requirements-dev.txt    # 开发/测试依赖（pytest、ruff）
+├── pyproject.toml          # ruff + pytest 配置（pythonpath、network marker）
 ├── .env.example            # 环境变量模板
 ├── .news_cache.json        # 缓存数据（自动生成）
+├── tests/                  # 单元测试（pytest；外网测试标 @pytest.mark.network）
+├── .github/workflows/      # ci.yml（PR 触发 lint+test）+ watchdog + daily_news
 └── scripts/
     ├── wecom_notify.sh     # 企微群机器人 bash 推送工具（运维事件专用）
     ├── auto_pull_deploy.sh # 服务器端 cron 自动部署（含企微部署成功/失败通知）
@@ -275,6 +279,19 @@ tail -f /var/log/ai-news.log
 grep "ERROR" /var/log/ai-news.log
 ```
 
+## 开发与测试
+
+```bash
+pip install -r requirements-dev.txt   # pytest、ruff
+ruff check .                          # 静态检查（沿用 ruff 默认规则集，无行长噪音）
+pytest -m "not network" -q            # 跑单元测试，跳过需要外网的 RSS 抓取测试
+```
+
+- **配置在 `pyproject.toml`**：`pythonpath = ["."]` 让根目录扁平模块（`bot_wecom` 等）在 `pytest` 控制台脚本下也能 import；`@pytest.mark.network` 标记需要外网的测试（CI 用 `-m "not network"` 保证确定性）。
+- **CI**（`.github/workflows/ci.yml`）：**仅 PR 触发**（PR 合并即 push to main，不重复跑），单 job `Lint & Test` 先 `ruff` 后 `pytest`，开 pip 缓存 + concurrency 去重。
+- **Branch Protection**：`main` 已设 `Lint & Test` 为 Required Status Check + 禁 force-push/删除。改 CI job 名后须用 `gh api` 同步更新该保护规则，否则旧名失效。
+- **架构/质量审计**：见 `docs/AUDIT_2026-07-05_ARCH_CODE_QUALITY.md`（综合 7/10；行动清单含僵尸测试清理、评分 `'the'` 关键词 bug、news_fetcher 拆分等 8 项，状态跟踪在报告内）。
+
 ## 已知限制
 
 ### 小程序卡片仅 iOS 客户端可点
@@ -304,6 +321,14 @@ WeCom webhook 不支持 `miniprogram_notice` 卡片类型，跨平台可点小�
 | **总计** | **¥29-36/月** |
 
 ## 更新日志
+
+### v2.7 (2026-06-22)
+- 补 og:image 质量门盲区：PIE News 对 M&A/交易类报道惯用「白底 + 两个公司 logo 并排」当 og:image（如 Crizac 收购 ForeignAdmits），这类图宽幅且尺寸大，躲过 v2.6 的尺寸/正方门，却在 1080×560 cover 裁切里被切烂（右侧 logo 截成 "ForeignAdm"）。`_is_usable_cover` 新增白底占比门：64×64 缩略图近白像素占比 ≥55% 直接拒（拼图 ~85%，真实照片即便天空占比高也仅 ~39%），拒掉后回落「大数字装饰」兜底；新增对应单测
+
+### v2.6 (2026-06-15)
+- 修复头条海报顶部频繁出现 36Kr logo 的问题：36氪对约半数无配图文章返回 240×240 品牌 logo 当 og:image，旧链路无校验直接铺满 banner。`image_fetcher` 新增质量门 `_is_usable_cover`（宽<600 或接近正方形小图直接拒），拒掉后海报走"大数字装饰"兜底；对所有来源通用，新增 `tests/test_image_fetcher.py`
+- 上线 PR 触发的 CI（`.github/workflows/ci.yml`）：单 job `Lint & Test`（ruff + pytest），pip 缓存 + concurrency 去重；新增 `pyproject.toml`（ruff/pytest 配置）、`requirements-dev.txt` pin `ruff`；清理全仓 24 个历史 lint 问题
+- `main` 启用 Branch Protection：`Lint & Test` 为 Required Status Check，禁 force-push/删除
 
 ### v2.5 (2026-06-02)
 - 部署接入集中部署器 `/opt/jump-autodeploy`（取代走 SSH 的 `auto_pull_deploy.sh`，deploy key 失效问题根治）；服务器 remote SSH→HTTPS（public 仓库免凭证）；新增 `deploy/autodeploy.conf` + `scripts/setup_cron.sh`（幂等装齐 news/auto-deploy/heartbeat 三条 cron，兼 crontab 被扫后一键恢复）
