@@ -1,50 +1,88 @@
 # 🧭 架构与功能总览
 
-本文汇总当前「AI 新闻机器人」的核心能力、数据流和运行方式，便于快速理解与维护。已精简为 **企业微信推送** 单一通道，并在 DigitalOcean 服务器上验证运行。
+> 最后更新：2026-07-05（对齐海报 / dingning.ai / watchdog 现状；上一版停留在 2025-11 的"多主题分别总结"旧架构）。
+> 配套评估见 `docs/AUDIT_2026-07-05_ARCH_CODE_QUALITY.md`。
+
+「异乡早咖啡」：每天自动聚合国际教育行业新闻 → AI 结构化摘要 → 品牌海报 + 企微群消息 + dingning.ai 网页三路分发。单次跑完即退出的批处理，无常驻进程。
 
 ---
 
 ## 系统概览
-- **目标**：每天自动聚合真实新闻 → AI 总结 → 推送到企业微信群。
-- **运行方式**：定时任务/手动触发执行 `bot_wecom.py`，单次跑完即退出。
-- **部署形态**：Ubuntu + Python 3.11（DigitalOcean Droplet 已实测），虚拟环境隔离依赖。
 
-## 关键模块
-- `bot_wecom.py`：主流程，按 `ACTIVE_TOPICS` 并发获取新闻、去重、AI 总结，拼接 Markdown 消息并推送到多 Webhook。
-- `news_fetcher.py`：新闻聚合
-  - 源：天行数据 API（可选）、RSS 列表、NewsAPI（可选）。
-  - 处理：并行抓取 → 标题去重 + 7 天时效 → 质量打分（关键词/摘要/可信来源/URL）→ 按来源多样性过滤。
-  - 输出：高质量新闻列表和用于 AI 的格式化文本。
-- `ai_summarizer.py`：DeepSeek Chat 调用，按主题提示要求逐条总结、保留来源、使用 emoji。
-- `news_cache.py`：去重缓存，按标题+URL 生成哈希，24 小时内不重复推送，`.news_cache.json` 持久化。
-- `config.py`：环境变量加载、日志、主题/关键词配置（AI、财经、创业、教育细分、PBSA、Uhomes），Webhook 多通道解析。
-- `start.py`：薄入口，直接调用 `bot_wecom.main()`。
-- `scripts/smoke_wecom.py`：本地假数据 smoke，验证格式与依赖，无网络请求。
+- **触发**：dingning 服务器（ops 用户）`/etc/cron.d/ai-news-bot`，每天北京 09:10 执行 `bot_wecom.py`。由 `scripts/setup_cron.sh` 幂等生成（详见 README「定时任务」）。
+- **产出**（一次运行）：
+  1. 企微群 **海报 PNG**（image 消息，≤2MB）
+  2. 企微群 **补充文本**（dingning.ai 完整阅读入口 + 小程序 schema）
+  3. **dingning.ai/coffee/{date}** 网页（MDX 提交到 dingning-ai 仓库，Vercel 自动部署）
+  4. （附加）昨日阅读统计 → 运维群
+- **监控**：GitHub Actions `watchdog.yml`（每天北京 10:30）检查 dingning-ai 仓库当天是否有 coffee 提交——外部死人开关，与服务器完全独立，断更即企微告警。
 
-## 数据流（单次执行）
-1) 读取环境变量（DeepSeek API Key、Webhook、多主题配置等）。  
-2) 为每个主题并发抓取新闻（API + RSS + NewsAPI）。  
-3) 去重 & 时效过滤 → 质量评分排序 → 来源多样性约束。  
-4) 缓存过滤 24 小时内已推送新闻。  
-5) 生成 AI 总结（DeepSeek）并标记缓存。  
-6) 汇总 Markdown 消息，逐个 Webhook 发送到企业微信群。
+## 模块地图（仓库根扁平布局）
+
+| 模块 | 行数级 | 职责 | 对外接口 |
+|---|---|---|---|
+| `bot_wecom.py` | ~520 | 主编排：并行抓取→过滤重排→AI→发布→海报→文本→统计 | `main()` / `send_daily_news()` |
+| `news_fetcher.py` | ~1100 | 新闻聚合：TianAPI + RSS + NewsAPI 抓取、URL 规范化去重、质量评分、教育相关性、信号分级、来源多样性；自带 1h RSS 文件缓存（/tmp） | `NewsFetcher.fetch_news()` |
+| `ai_summarizer.py` | ~290 | LLM 调用（OpenAI 兼容，默认 DashScope）。生产路径是 `summarize_for_poster()`：5 条结构化 JSON（title_zh/title_en/summary/punch/source），带日期锚定 + 反编造 prompt 约束；`summarize_news()` 为旧路径遗留（当前无调用方） | `AISummarizer` |
+| `news_cache.py` | ~230 | 已推送去重：标题+URL 哈希，24h 窗口，`.news_cache.json` 持久化 | `filter_new_news()` / `mark_news_as_sent()` |
+| `image_fetcher.py` | ~170 | 头条封面：抓 og:image/twitter:image → 本地缓存 → 三道质量门（尺寸/近方形 logo/白底拼图）| `fetch_article_image()` |
+| `poster_generator.py` | ~300 | 海报：Jinja2 HTML 模板 → Playwright 截图 PNG；三套品牌主题按周几轮换；>2MB 自动转 JPEG | `render_png()` / `theme_for()` |
+| `dingning_publisher.py` | ~200 | MDX 生成 + GitHub Contents API 提交 dingning-ai 仓库；失败不抛异常，返回降级 URL | `publish_to_dingning()` |
+| `stats_reporter.py` | ~100 | 查 dingning.ai 阅读 API → 趋势条形图 → 运维群；任何异常只 log | `send_stats_report()` |
+| `config.py` | ~180 | env 加载（`override=True`，.env 是唯一真相源）、主题/关键词/负面词单一真相源、LLM 路由 | 常量 |
+| `start.py` | 6 | 薄入口 → `bot_wecom.main()` | — |
+| `diagnose_news.py` | ~130 | 手动诊断脚本（逐环节检查抓取链路） | CLI |
+
+## 数据流（单次执行，bot_wecom.send_daily_news）
+
+```
+① 并行 fetch_news(topic) × 5 主题        news_fetcher：三源抓取 → URL/id/标题/相似度去重
+                                          → 7 天时效 → 质量评分排序 → 单源≤2 条
+② filter_new_news('daily_digest')        news_cache：24h 内已推送剔除
+③ 教育相关过滤 + 政策/招生/签证优先重排    bot_wecom 内联（EDUCATION_*_KEYWORDS）
+④ 全局来源多样性（单源≤2）→ top 9 候选
+⑤ summarize_for_poster(top 9)            LLM 选 5 条出结构化 JSON；title_en 要求逐字复制原标题
+⑥ publish_to_dingning(9 候选, 5 选中)     MDX → GitHub API → Vercel 后台构建（与 ⑦ 时间重叠）
+⑦ build_poster_data → render_png → 企微图片
+       hero 封面走 image_fetcher og:image 质量门，失败自动"大数字装饰"兜底
+⑧ 等 Vercel 部署（DINGNING_DEPLOY_WAIT_SEC 扣减 ⑦ 已耗时）→ 企微补充文本
+⑨ stats_reporter → 运维群（失败不影响主流程）
+```
+
+**关键不变量：title_en 锚定。** LLM 重排/重选后的 poster_items 与 top_news 顺序不对齐，⑥⑦ 一律用归一化 title_en 匹配回源新闻取 URL/封面，**绝不按位置下标拉链**（PR #8）。匹配不上则宁缺毋错：省略链接并带响计数。
+
+## 降级矩阵（每个外部依赖都有显式 fallback）
+
+| 故障点 | 行为 |
+|---|---|
+| LLM 海报摘要失败/JSON 不合法 | 跳过海报与 dingning 同步，文本走通用 `/coffee` 入口 |
+| og:image 抓取失败/被质量门拒绝 | 海报 hero 走"大数字装饰"兜底 |
+| 海报渲染/发送异常 | 不阻断补充文本发送 |
+| dingning MDX 提交失败 | 返回通用 `/coffee` URL，主流程继续 |
+| 统计 API/发送失败 | 只 log，永不抛出 |
+| 全部新闻源为空 / 全部已推送 | 取消本次日报（watchdog 次日 10:30 兜底告警） |
+
+## 运行与部署
+
+- **生产**：dingning 服务器 `/etc/cron.d/ai-news-bot`（09:10 日报 + jump-autodeploy 轮询 + 心跳），`scripts/setup_cron.sh` 幂等安装。cron 行内联 `LLM_MODEL=qwen-plus`（fast model）。
+- **自动部署**：`scripts/auto_pull_deploy.sh`（cron 轮询 git，更新即拉取 + 企微部署通知）。
+- **CI**：`.github/workflows/ci.yml` 仅 PR 触发，单 job `ruff` → `pytest -m "not network"`；main 分支 Required Status Check = `Lint & Test`。
+- **`daily_news.yml`**：GitHub Actions 推送通道，schedule 已注释停用（避免与服务器 cron 双推），仅留 workflow_dispatch 手动兜底。
+- **本地**：`python3 bot_wecom.py`；海报冒烟 `python3 poster_generator.py`（出三主题 mock 图）；`scripts/smoke_wecom.py` 假数据冒烟。
 
 ## 配置要点
-- 必填：`DEEPSEEK_API_KEY`、`WECOM_WEBHOOK_URL`（可多条逗号分隔）。  
-- 可选：`TIANAPI_KEY`、`NEWSAPI_KEY`（提升真实新闻覆盖）。  
-- 主题开关：`ACTIVE_TOPICS`（默认 `ai,education`）。  
-- `.env.example` 提供模板；`.news_cache.json` 保存去重状态，需确保运行用户具备写权限。
 
-## 运行与部署（推荐做法）
-- **本地/服务器测试**：`python3 bot_wecom.py`。  
-- **定时任务**：`0 9 * * * cd /opt/apps/ai-news-bot && /opt/apps/ai-news-bot/venv/bin/python3 bot_wecom.py >> /var/log/ai-news.log 2>&1`。  
-- **一键发布**：`bash publish.sh "feat: ..."`（打包推送 GitHub + 服务器部署，当前 `.deployrc` 面向 DigitalOcean）。
+- 必填：`DASHSCOPE_API_KEY`（或旧名 `DEEPSEEK_API_KEY`）、`WECOM_WEBHOOK_URL`（多条逗号分隔）。
+- 可选：`LLM_BASE_URL`/`LLM_MODEL`（默认 DashScope + deepseek-v4-pro）、`TIANAPI_KEY`、`NEWSAPI_KEY`、`DINGNING_GITHUB_TOKEN`（缺省跳过网页同步）、`WECOM_OPS_WEBHOOK_URL`、`ACTIVE_TOPICS`（默认 5 个教育主题，见 `config.ACTIVE_TOPICS_DEFAULT`）、`SEND_WHEN_NO_NEW`。
+- `.env` 通过 `load_dotenv(override=True)` 覆盖宿主残留 export（2026-06-02 事故教训）。
 
 ## 已知取舍
-- 仅保留企业微信通道；Telegram/邮件相关文档与脚本已停用。  
-- 缓存为本地文件，不适合多实例共享场景。  
-- Dockerfile 默认命令需自行指定入口（建议改为 `python3 bot_wecom.py` 或自定义调度脚本）。
+
+- 三层过滤（抓取层评分 / 相关性系数 / 日报层重排）关键词表尚未完全收口 config，改词需注意层级（AUDIT 行动项 #7）。
+- 缓存均为本地文件（`.news_cache.json` + /tmp RSS pickle），不支持多实例。
+- 企微小程序 schema 仅 iOS 可点（详见 README「已知限制」）。
+- 海报渲染依赖 Playwright Chromium，服务器需 `playwright install chromium`。
 
 ---
 
-维护者可先阅读本文件，再查阅 `README.md` 以获取操作指引。***
+维护者可先阅读本文件，再查阅 `README.md` 获取操作指引。
