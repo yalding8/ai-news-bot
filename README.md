@@ -152,9 +152,10 @@ ai-news-bot/
 ├── .news_cache.json        # 缓存数据（自动生成）
 ├── tests/                  # 单元测试（pytest；外网测试标 @pytest.mark.network）
 ├── .github/workflows/      # ci.yml（PR 触发 lint+test）+ watchdog + daily_news
-└── scripts/
-    ├── wecom_notify.sh     # 企微群机器人 bash 推送工具（运维事件专用）
-    ├── auto_pull_deploy.sh # 服务器端 cron 自动部署（含企微部署成功/失败通知）
+└── scripts/                # ⚠️ 以下 4 个为 ops-deploy-kit 管理的脚本（v1.0.0，upgrade-kit.sh 就地升级）
+    ├── feishu_notify.sh    # 飞书 interactive card 发送器（v1.0.0 起为通知后端）
+    ├── wecom_notify.sh     # 企微群机器人 bash 推送工具（保留兜底）
+    ├── auto_pull_deploy.sh # 服务器端 cron 自动部署（本项目实际由 jump-autodeploy 接管，见 deploy/autodeploy.conf）
     └── heartbeat.sh        # 每日 💓 心跳（磁盘 + cron 最近运行时间 + 部署 commit）
 ```
 
