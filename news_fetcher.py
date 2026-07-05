@@ -4,6 +4,7 @@
 支持多个新闻源，获取真实新闻数据（API + RSS）
 """
 import os
+import re
 import requests
 import feedparser
 import logging
@@ -343,6 +344,19 @@ class NewsFetcher:
         else:
             return title_sim
 
+    @staticmethod
+    def _keyword_in_text(keyword: str, text: str) -> bool:
+        """关键词匹配（AUDIT 2026-07-05 C1）。
+
+        纯 ASCII 词要求命中位置在词首边界（允许复数等后缀）：杀掉
+        'qs'→'faqs'、'the'→'weather' 这类词中误命中，同时保留旧子串行为里
+        'ranking'→'rankings'、'visa'→'visas' 的合理命中。
+        含中文的关键词按子串匹配（中文无词边界可用）。
+        """
+        if keyword.isascii():
+            return re.search(rf"\b{re.escape(keyword)}", text) is not None
+        return keyword in text
+
     def calculate_news_quality(self, news: Dict, topic_keywords: List[str]) -> float:
         """
         计算新闻质量分数（升级版 - Phase 1）
@@ -387,12 +401,13 @@ class NewsFetcher:
         desc_lower = description.lower()
         keyword_matches = 0
         
-        # 高价值关键词加分（如政策、签证、突发）
-        high_value_keywords = ['visa', 'policy', 'visa policy', 'breaking', 'ranking', 'qs', 'the', 'immigration', 'urgent', '签证', '政策', '排名', '最新', '发布']
+        # 高价值关键词加分（如政策、签证、突发）。
+        # THE 排名必须写全称：裸 'the' 会命中几乎所有英文标题（AUDIT 2026-07-05 C1）
+        high_value_keywords = ['visa', 'policy', 'visa policy', 'breaking', 'ranking', 'qs', 'times higher education', 'immigration', 'urgent', '签证', '政策', '排名', '最新', '发布']
         for hw in high_value_keywords:
-            if hw in title_lower:
+            if self._keyword_in_text(hw, title_lower):
                 score += 5 # 标题每匹配到一个高价值词 +5
-            elif hw in desc_lower:
+            elif self._keyword_in_text(hw, desc_lower):
                 score += 2 # 描述每匹配到一个高价值词 +2
         
         for keyword in topic_keywords:
