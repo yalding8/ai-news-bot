@@ -141,7 +141,7 @@ ai-news-bot/
 ├── news_fetcher.py         # 新闻获取：API+RSS、质量评分、去重过滤
 ├── ai_summarizer.py        # AI摘要：DeepSeek调用
 ├── news_cache.py           # 缓存管理：24小时去重
-├── poster_generator.py     # 海报渲染：PIL → PNG
+├── poster_generator.py     # 海报渲染：Jinja2 HTML → Playwright 截图 PNG（>2MB 自动转 JPEG）
 ├── image_fetcher.py        # 文章封面抓取（og:image，含质量门：拒绝 logo/小图/白底拼图）
 ├── dingning_publisher.py   # dingning.ai 跨项目发布（GitHub Contents API）
 ├── config.py               # 配置：主题、关键词、RSS源、跨项目参数
@@ -167,8 +167,8 @@ ai-news-bot/
 | `industry_news` | 行业动态 | 多知网、鲸媒体、TechCrunch Education等 |
 | `edu_policy` | 教育政策 | 各国留学、签证、移民政策更新 |
 | `uni_rankings` | 院校排名 | QS、THE、US News 等大学排名动态 |
-| `ai` | AI科技 | VentureBeat、TechCrunch、量子位等 |
 | `finance` | 财经新闻 | 虎嗅、36氪、华尔街见闻等 |
+| `startup` | 创业投资 | 创业邦、36氪、Hacker News 等 |
 | `education` | 教育综合 | Times Higher Education等 |
 | `pbsa` | 学生公寓 | PBSA 学生公寓行业动态 |
 | `uhomes` | 异乡好居 | 异乡好居企业动态 |
