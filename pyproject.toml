@@ -13,8 +13,5 @@ markers = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-# 这两处 import 不在文件顶部是有意为之：
-# smoke_wecom 需要先 sys.path.insert 再 import 项目模块；
-# conftest 的 hypothesis strategies 是按需的延迟 import。
+# smoke_wecom 的 import 不在文件顶部是有意为之：需要先 sys.path.insert 再 import 项目模块。
 "scripts/smoke_wecom.py" = ["E402"]
-"tests/conftest.py" = ["E402"]
