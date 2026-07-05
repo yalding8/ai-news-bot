@@ -1,18 +1,28 @@
 #!/usr/bin/env bash
 #
-# wecom_notify.sh — 推送企业微信群机器人 markdown 通知（部署事件用）
+# wecom_notify.sh — WeCom (企业微信) group-bot markdown sender.
 #
-# 用法:
-#   ./wecom_notify.sh "标题" "Markdown 正文"
+# Part of ops-deploy-kit. See https://github.com/yalding8/ops-deploy-kit
 #
-# 环境变量:
-#   WECOM_BOT_WEBHOOK_URL   企微群机器人 webhook URL（未配置则静默退出，不阻塞）
+# Usage:
+#   ./wecom_notify.sh "<title>" "<markdown body>"
 #
-# 退出码:
-#   始终 exit 0 — 通知失败不阻塞调用方的关键流程；错误信息写到 stderr
+# Required env:
+#   WECOM_BOT_WEBHOOK_URL   group-bot webhook URL.
+#                           If unset → log to stderr and exit 0 (never blocks caller).
 #
-# 约定:
-#   调用方不传 `"` / `\` / 除 `\n` 外的特殊字符，避免 JSON 需要额外 escape
+# Exit code:
+#   Always 0. Notifications must never break the calling deploy/script.
+#   Errors go to stderr.
+#
+# Calling convention:
+#   - `"` and `\` in title/body are escaped automatically — pass commit messages
+#     and arbitrary user input safely.
+#   - Literal `\n` (two chars: backslash + n) in body is preserved as a JSON
+#     newline escape — it renders as a line break in WeCom. This is the
+#     idiomatic way to write multi-line markdown bodies (see auto_pull_deploy.sh).
+#   - Real newline characters in body are also accepted and converted to JSON
+#     `\n` escapes. Mixing both forms in one call is safe.
 #
 set -uo pipefail
 
@@ -21,15 +31,36 @@ TITLE="${1:-(no title)}"
 CONTENT="${2:-}"
 
 if [ -z "$WEBHOOK_URL" ]; then
-  echo "[wecom_notify] WECOM_BOT_WEBHOOK_URL 未配置，跳过推送" >&2
+  echo "[wecom_notify] WECOM_BOT_WEBHOOK_URL not set, skipping" >&2
   exit 0
 fi
+
+# ─── Escape for JSON string interpolation ─────────────────────────────────────
+# Five-step transform; order matters. The placeholder protects literal '\n'
+# (the calling convention) so that step 2 doesn't double-escape its backslash,
+# and step 5 restores it as a JSON newline escape.
+#
+# The placeholder uses U+0001 (SOH) sentinels — vanishingly unlikely in commit
+# messages, hostnames, or any other realistic input.
+_escape_for_json() {
+  local s="$1"
+  local nl=$'\001OPSKIT_NL\001'
+  s="${s//\\n/$nl}"          # 1. protect literal \n (2 chars: \ + n)
+  s="${s//\\/\\\\}"           # 2. escape remaining backslashes
+  s="${s//\"/\\\"}"           # 3. escape double quotes
+  s="${s//$'\n'/\\n}"         # 4. real newline → JSON \n
+  s="${s//$nl/\\n}"           # 5. restore protected \n as JSON \n
+  printf '%s' "$s"
+}
+
+TITLE_ESC=$(_escape_for_json "$TITLE")
+CONTENT_ESC=$(_escape_for_json "$CONTENT")
 
 payload=$(cat <<EOF
 {
   "msgtype": "markdown",
   "markdown": {
-    "content": "## ${TITLE}\n${CONTENT}"
+    "content": "## ${TITLE_ESC}\n${CONTENT_ESC}"
   }
 }
 EOF
@@ -50,9 +81,9 @@ if [ "$http_code" != "200" ]; then
   exit 0
 fi
 
-# HTTP 200 但企微 API 可能返回 errcode != 0（例如 webhook 无效 / 限频）
+# HTTP 200 but WeCom may still return errcode != 0 (invalid webhook / rate-limited / etc.)
 if grep -q '"errcode":0' "$resp_file" 2>/dev/null; then
   exit 0
 fi
-echo "[wecom_notify] errcode 非 0: $(head -c 200 "$resp_file" 2>/dev/null)" >&2
+echo "[wecom_notify] non-zero errcode: $(head -c 200 "$resp_file" 2>/dev/null)" >&2
 exit 0

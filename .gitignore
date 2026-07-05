@@ -58,3 +58,15 @@ assets/cache/
 
 # 海报渲染输出
 out/
+# ops-deploy-kit (managed by bootstrap.sh)
+.deploy.lock
+.deploy-fail-count
+.deploy-alert-sent
+deploy.log
+scripts/.kit-backup/
+
+# ops-deploy-kit 服务器侧机件与备份（不入库）
+scripts/.kit-version
+scripts/upgrade-kit.sh
+.deploy.env.template
+.env.bak.*
