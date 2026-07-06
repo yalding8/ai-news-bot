@@ -138,7 +138,10 @@ AI 摘要 ─────► poster_items
 ```
 ai-news-bot/
 ├── bot_wecom.py            # 主程序：流程控制、消息发送
-├── news_fetcher.py         # 新闻获取：API+RSS、质量评分、去重过滤
+├── news_fetcher.py         # 新闻抓取：TianAPI+RSS+NewsAPI、RSS JSON 缓存、管线编排
+├── news_scoring.py         # 纯评分/分级：质量分、教育相关性、信号等级（词表在 config）
+├── news_dedup.py           # 纯去重：URL 规范化、相似度、来源多样性
+├── http_util.py            # 共享 HTTP 重试会话构建
 ├── ai_summarizer.py        # AI摘要：DeepSeek调用
 ├── news_cache.py           # 缓存管理：24小时去重
 ├── poster_generator.py     # 海报渲染：Jinja2 HTML → Playwright 截图 PNG（>2MB 自动转 JPEG）
@@ -291,7 +294,7 @@ pytest -m "not network" -q            # 跑单元测试，跳过需要外网的 
 - **配置在 `pyproject.toml`**：`pythonpath = ["."]` 让根目录扁平模块（`bot_wecom` 等）在 `pytest` 控制台脚本下也能 import；`@pytest.mark.network` 标记需要外网的测试（CI 用 `-m "not network"` 保证确定性）。
 - **CI**（`.github/workflows/ci.yml`）：**仅 PR 触发**（PR 合并即 push to main，不重复跑），单 job `Lint & Test` 先 `ruff` 后 `pytest`，开 pip 缓存 + concurrency 去重。
 - **Branch Protection**：`main` 已设 `Lint & Test` 为 Required Status Check + 禁 force-push/删除。改 CI job 名后须用 `gh api` 同步更新该保护规则，否则旧名失效。
-- **架构/质量审计**：见 `docs/AUDIT_2026-07-05_ARCH_CODE_QUALITY.md`（综合 7/10；行动清单含僵尸测试清理、评分 `'the'` 关键词 bug、news_fetcher 拆分等 8 项，状态跟踪在报告内）。
+- **架构/质量审计**：见 `docs/AUDIT_2026-07-05_ARCH_CODE_QUALITY.md`（综合 7/10；8 项行动清单已全部完成 ✅，状态跟踪在报告内）。
 
 ## 已知限制
 

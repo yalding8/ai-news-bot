@@ -177,10 +177,10 @@ news_fetcher.py:66-70 + 620-652：缓存目录 `tempfile.gettempdir()/ai_news_ca
 | 2 | 修 C1：`'the'`/`'qs'` 高价值词改无歧义 token，并为 calculate_news_quality 建评分快照测试 | 1 h | ✅ 已修（同 PR；ASCII 词改词首边界匹配保留复数命中，新增 tests/test_news_scoring.py 9 例含 150.0 整分快照） |
 | 3 | 删死代码：process_topic_news、HARD_FILTER_KEYWORDS、PRIORITY_KEYWORDS、内联 negative_keywords 收口 config、main() 兜底去掉 'ai' | 1 h | ✅ 已修（同 PR；含 daily_news.yml 默认主题同步。注意：process_topic_news 删除后 ai_summarizer.summarize_news/_validate_summary/_fallback_summary 链成为孤儿代码，保留待定，见修正记录） |
 | 4 | 重写 ARCHITECTURE.md 反映海报/dingning/watchdog 现状（或并入 README 后删除） | 1 h | ✅ 已修（同 PR；重写为模块地图 + 9 步数据流 + 降级矩阵） |
-| 5 | 补核心纯函数测试：_normalize_url / clean_rss_time / _calculate_education_relevance / NewsCache | 2-3 h | ❌ 未修 |
-| 6 | pickle 缓存改 JSON + 项目内目录 + 过期清理；image_fetcher 加下载大小上限 | 1-2 h | ❌ 未修 |
-| 7 | news_fetcher 拆分（fetchers / scoring / dedup 三模块），关键词表全收口 config | 0.5-1 d | ❌ 未修 |
-| 8 | send_wecom_message/image 合并发送循环；两套 Session 构建抽公共函数 | 1 h | ❌ 未修 |
+| 5 | 补核心纯函数测试：_normalize_url / clean_rss_time / _calculate_education_relevance / NewsCache | 2-3 h | ✅ 已修（2026-07-06，PR: chore/audit-items-5-8；41 例新测试，先于 #6-#8 落地作安全网） |
+| 6 | pickle 缓存改 JSON + 项目内目录 + 过期清理；image_fetcher 加下载大小上限 | 1-2 h | ✅ 已修（同 PR；RSS 缓存 → assets/cache/rss/ JSON + 7 天清理；封面下载 10MB 上限，Content-Length + 流中双闸） |
+| 7 | news_fetcher 拆分（fetchers / scoring / dedup 三模块），关键词表全收口 config | 0.5-1 d | ✅ 已修（同 PR；1094 行 → news_fetcher 500 + news_scoring 265 + news_dedup 165；SOURCE_TIERS/RELEVANCE_*/SIGNAL_*/RSS_FEEDS/TIANAPI_ENDPOINTS 全入 config，A2/A4 一并了结；NewsFetcher 留 staticmethod 兼容代理，88 测试零改动全绿，快照 150.0 不变） |
+| 8 | send_wecom_message/image 合并发送循环；两套 Session 构建抽公共函数 | 1 h | ✅ 已修（同 PR；http_util.make_retry_session + bot_wecom._post_to_webhooks，image 路径顺带补上非 JSON 响应守卫） |
 
 不建议做的：引入分层框架/抽象仓储/异步化——单次跑完即退出的日频批处理，当前扁平结构与规模匹配，过度工程反而伤可维护性。
 
