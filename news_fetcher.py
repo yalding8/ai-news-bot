@@ -9,11 +9,10 @@ import requests
 import feedparser
 import logging
 from typing import List, Dict, Any
-from requests.adapters import HTTPAdapter
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
-from urllib3.util import Retry
 from dotenv import load_dotenv
 from config import TOPIC_KEYWORDS, NEGATIVE_KEYWORDS
+from http_util import make_retry_session
 
 # 加载环境变量（override=True：.env 优先于宿主残留 export，详见 config.py）
 load_dotenv(override=True)
@@ -25,16 +24,7 @@ class NewsFetcher:
 
     def __init__(self):
         # 统一的HTTP会话 + 重试，提升请求稳定性
-        self.session = requests.Session()
-        retries = Retry(
-            total=3,
-            backoff_factor=0.5,
-            status_forcelist=[429, 500, 502, 503, 504],
-            allowed_methods={"GET", "POST"}
-        )
-        adapter = HTTPAdapter(max_retries=retries)
-        self.session.mount("http://", adapter)
-        self.session.mount("https://", adapter)
+        self.session = make_retry_session()
         self.timeout = 10
 
         # 天行数据API配置

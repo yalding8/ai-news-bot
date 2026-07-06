@@ -5,11 +5,8 @@ AI新闻 企业微信群机器人版本
 集成真实新闻API，避免AI编造内容
 """
 
-import requests
 from datetime import datetime
 from pathlib import Path
-from requests.adapters import HTTPAdapter
-from urllib3.util import Retry
 import concurrent.futures
 
 from config import (
@@ -28,6 +25,7 @@ from ai_summarizer import AISummarizer
 from news_cache import filter_new_news, mark_news_as_sent
 from image_fetcher import fetch_article_image
 from poster_generator import PosterData, render_png, theme_for
+from http_util import make_retry_session
 
 logger = get_logger(__name__)
 
@@ -38,16 +36,7 @@ news_fetcher = NewsFetcher()
 ai_summarizer = AISummarizer()
 
 # 企业微信发送使用的HTTP会话（带重试）
-send_session = requests.Session()
-_retries = Retry(
-    total=3,
-    backoff_factor=0.5,
-    status_forcelist=[429, 500, 502, 503, 504],
-    allowed_methods={"POST"}
-)
-_adapter = HTTPAdapter(max_retries=_retries)
-send_session.mount("http://", _adapter)
-send_session.mount("https://", _adapter)
+send_session = make_retry_session({"POST"})
 
 
 def parse_active_topics(raw: str) -> list:
@@ -93,6 +82,48 @@ def rank_education_news(news_list: list) -> list:
 
     return sorted(news_list, key=score_news, reverse=True)
 
+def _post_to_webhooks(payload: dict, timeout: int = 10, label: str = "消息") -> bool:
+    """把 payload POST 到全部（去重后的）企微 webhook，逐个判断 errcode。
+
+    send_wecom_message / send_wecom_image 共用；任一 webhook 失败返回 False，
+    但不中断其余 webhook 的发送。
+    """
+    if not WECOM_WEBHOOK_URLS:
+        logger.error("错误：未设置 WECOM_WEBHOOK_URL")
+        return False
+
+    all_success = True
+    unique_webhooks = list(dict.fromkeys(WECOM_WEBHOOK_URLS))
+    if len(unique_webhooks) < len(WECOM_WEBHOOK_URLS):
+        logger.info(f"🔁 去重Webhook: {len(WECOM_WEBHOOK_URLS)} -> {len(unique_webhooks)}")
+    for webhook_url in unique_webhooks:
+        try:
+            response = send_session.post(webhook_url, json=payload, timeout=timeout)
+            if response.status_code != 200:
+                logger.error(f"❌ {label}发送失败 ({webhook_url[-10:]}) HTTP {response.status_code}: {response.text[:200]}")
+                all_success = False
+                continue
+
+            try:
+                result = response.json()
+            except ValueError:
+                logger.error(f"❌ {label}发送失败，非JSON响应: {response.text[:200]}")
+                all_success = False
+                continue
+
+            if result.get('errcode') == 0:
+                logger.info(f"✅ {label}发送成功 ({webhook_url[-10:]})")
+            else:
+                logger.error(f"❌ {label}发送失败 errcode={result.get('errcode')} errmsg={result.get('errmsg')}")
+                all_success = False
+
+        except Exception as e:
+            logger.error(f"❌ {label}发送异常 ({webhook_url[-10:]}): {e}")
+            all_success = False
+
+    return all_success
+
+
 def send_wecom_message(content: str, msgtype: str = "text") -> bool:
     """
     发送消息到企业微信群
@@ -104,60 +135,12 @@ def send_wecom_message(content: str, msgtype: str = "text") -> bool:
     Returns:
         bool: 发送是否成功
     """
-    if not WECOM_WEBHOOK_URLS:
-        logger.error("错误：未设置 WECOM_WEBHOOK_URL")
-        return False
-
-    # 构造消息体
     if msgtype == "markdown":
-        data = {
-            "msgtype": "markdown",
-            "markdown": {
-                "content": content
-            }
-        }
+        data = {"msgtype": "markdown", "markdown": {"content": content}}
     else:
-        data = {
-            "msgtype": "text",
-            "text": {
-                "content": content
-            }
-        }
+        data = {"msgtype": "text", "text": {"content": content}}
 
-    all_success = True
-    unique_webhooks = list(dict.fromkeys(WECOM_WEBHOOK_URLS))
-    if len(unique_webhooks) < len(WECOM_WEBHOOK_URLS):
-        logger.info(f"🔁 去重Webhook: {len(WECOM_WEBHOOK_URLS)} -> {len(unique_webhooks)}")
-    for webhook_url in unique_webhooks:
-        try:
-            response = send_session.post(
-                webhook_url,
-                json=data,
-                timeout=10
-            )
-            if response.status_code != 200:
-                logger.error(f"❌ 消息发送失败 ({webhook_url[-10:]}) HTTP {response.status_code}: {response.text[:200]}")
-                all_success = False
-                continue
-
-            try:
-                result = response.json()
-            except ValueError:
-                logger.error(f"❌ 消息发送失败，非JSON响应: {response.text[:200]}")
-                all_success = False
-                continue
-
-            if result.get('errcode') == 0:
-                logger.info(f"✅ 消息发送成功 ({webhook_url[-10:]})")
-            else:
-                logger.error(f"❌ 消息发送失败 errcode={result.get('errcode')} errmsg={result.get('errmsg')}")
-                all_success = False
-
-        except Exception as e:
-            logger.error(f"❌ 发送消息时出错 ({webhook_url[-10:]}): {e}")
-            all_success = False
-
-    return all_success
+    return _post_to_webhooks(data, timeout=10, label="消息")
 
 
 def build_poster_data(top_news: list, poster_items: list) -> PosterData:
@@ -231,10 +214,6 @@ def send_wecom_image(image_path: "Path") -> bool:
     import base64
     import hashlib
 
-    if not WECOM_WEBHOOK_URLS:
-        logger.error("错误：未设置 WECOM_WEBHOOK_URL")
-        return False
-
     try:
         raw = image_path.read_bytes()
     except Exception as e:
@@ -254,26 +233,8 @@ def send_wecom_image(image_path: "Path") -> bool:
         },
     }
 
-    all_success = True
-    unique_webhooks = list(dict.fromkeys(WECOM_WEBHOOK_URLS))
-    for webhook_url in unique_webhooks:
-        try:
-            response = send_session.post(webhook_url, json=data, timeout=15)
-            if response.status_code != 200:
-                logger.error(f"❌ 海报发送失败 ({webhook_url[-10:]}) HTTP {response.status_code}")
-                all_success = False
-                continue
-            result = response.json()
-            if result.get("errcode") == 0:
-                logger.info(f"✅ 海报发送成功 ({webhook_url[-10:]}, {size_kb:.1f} KB)")
-            else:
-                logger.error(f"❌ 海报发送失败 errcode={result.get('errcode')} errmsg={result.get('errmsg')}")
-                all_success = False
-        except Exception as e:
-            logger.error(f"❌ 海报发送异常 ({webhook_url[-10:]}): {e}")
-            all_success = False
-
-    return all_success
+    logger.info(f"📤 发送海报 ({size_kb:.1f} KB)...")
+    return _post_to_webhooks(data, timeout=15, label="海报")
 
 
 def send_daily_news(topics: list = None):
