@@ -21,8 +21,11 @@
 
 | 模块 | 行数级 | 职责 | 对外接口 |
 |---|---|---|---|
-| `bot_wecom.py` | ~520 | 主编排：并行抓取→过滤重排→AI→发布→海报→文本→统计 | `main()` / `send_daily_news()` |
-| `news_fetcher.py` | ~1100 | 新闻聚合：TianAPI + RSS + NewsAPI 抓取、URL 规范化去重、质量评分、教育相关性、信号分级、来源多样性；自带 1h RSS 文件缓存（/tmp） | `NewsFetcher.fetch_news()` |
+| `bot_wecom.py` | ~490 | 主编排：并行抓取→过滤重排→AI→发布→海报→文本→统计 | `main()` / `send_daily_news()` |
+| `news_fetcher.py` | ~500 | 抓取与编排：TianAPI + RSS + NewsAPI、RSS JSON 文件缓存（1h TTL，assets/cache/rss/）；评分/去重委托给下面两个纯函数模块（NewsFetcher 留兼容代理） | `NewsFetcher.fetch_news()` |
+| `news_scoring.py` | ~265 | 纯评分/分级：质量分、教育相关性系数、信号等级、词首边界关键词匹配、时间清洗/时效（词表单一真相源在 config） | `calculate_news_quality()` 等纯函数 |
+| `news_dedup.py` | ~165 | 纯去重：URL/id 规范化去重键、标题相似度、跨源去重管线、来源多样性 | `dedupe_news()` / `apply_diversity_filter()` |
+| `http_util.py` | ~25 | 共享 requests.Session + 指数退避重试构建 | `make_retry_session()` |
 | `ai_summarizer.py` | ~290 | LLM 调用（OpenAI 兼容，默认 DashScope）。生产路径是 `summarize_for_poster()`：5 条结构化 JSON（title_zh/title_en/summary/punch/source），带日期锚定 + 反编造 prompt 约束；`summarize_news()` 为旧路径遗留（当前无调用方） | `AISummarizer` |
 | `news_cache.py` | ~230 | 已推送去重：标题+URL 哈希，24h 窗口，`.news_cache.json` 持久化 | `filter_new_news()` / `mark_news_as_sent()` |
 | `image_fetcher.py` | ~170 | 头条封面：抓 og:image/twitter:image → 本地缓存 → 三道质量门（尺寸/近方形 logo/白底拼图）| `fetch_article_image()` |
@@ -78,8 +81,8 @@
 
 ## 已知取舍
 
-- 三层过滤（抓取层评分 / 相关性系数 / 日报层重排）关键词表尚未完全收口 config，改词需注意层级（AUDIT 行动项 #7）。
-- 缓存均为本地文件（`.news_cache.json` + /tmp RSS pickle），不支持多实例。
+- 过滤仍分三层（抓取层评分 / 相关性系数 / 日报层重排），但全部关键词表已收口 `config.py` 单一真相源（2026-07-06，AUDIT #7）；改词只动 config。
+- 缓存均为本地文件（`.news_cache.json` + `assets/cache/rss/` JSON），不支持多实例。
 - 企微小程序 schema 仅 iOS 可点（详见 README「已知限制」）。
 - 海报渲染依赖 Playwright Chromium，服务器需 `playwright install chromium`。
 
