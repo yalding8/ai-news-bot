@@ -162,3 +162,140 @@ NEGATIVE_KEYWORDS = [
     # 特定品牌（噪音）
     '金宝贝', '美吉姆', '猿辅导', '作业帮', '火花思维', '编程猫',
 ]
+
+# ========== 评分/分级关键词表（单一真相源，供 news_scoring 使用） ==========
+
+# 高价值关键词：标题命中 +5 / 描述命中 +2。
+# THE 排名必须写全称：裸 'the' 会命中几乎所有英文标题（AUDIT 2026-07-05 C1）
+HIGH_VALUE_KEYWORDS = [
+    'visa', 'policy', 'visa policy', 'breaking', 'ranking', 'qs',
+    'times higher education', 'immigration', 'urgent',
+    '签证', '政策', '排名', '最新', '发布',
+]
+
+# 来源可信度分层（education 固定 35 / academic 30 / quality 20 / tech 25×相关性打折）
+SOURCE_TIERS = {
+    'education': [
+        'inside higher ed', 'the pie news', 'icef',
+        'jiemodui', '芥末堆', 'duozhi', '多知',
+        'study international', 'university business',
+        'university affairs', 'wonkhe', 'campus review',
+    ],
+    'academic': ['nature', 'science', 'mit technology review'],
+    'tech': [
+        'techcrunch', '36kr', 'venturebeat',
+        'latepost', '晚点', 'caixin', '财新',
+    ],
+    'quality': [
+        'qs', 'topuniversities', 'higher ed dive',
+        'bloomberg', 'reuters',
+    ],
+}
+
+# 教育相关性系数：泛科技话题（无强留学词时降为 0.1）
+RELEVANCE_TECH_IRRELEVANT = [
+    '大模型', 'agi', 'llm', 'gpt', '算力', '芯片', '半导体',
+    '开源', 'transformer', '推理', '训练', 'token',
+]
+# 强相关词（留学核心）：≥3 个 → 1.0，≥1 个 → 0.8
+RELEVANCE_STRONG_KEYWORDS = [
+    'study abroad', 'international students', 'overseas education',
+    'visa', 'admissions', 'scholarship', 'tuition', 'immigration',
+    '留学', '签证', '招生', '申请', '移民', '奖学金',
+]
+# 弱相关词（泛教育）：≥2 个 → 0.5，≥1 个 → 0.3
+RELEVANCE_WEAK_KEYWORDS = ['education', 'university', 'student', 'college', '教育', '大学', '学生']
+
+# 信号分级：1=事实变更（政策/签证/截止日期）2=权威解读 3=泛资讯
+SIGNAL_LEVEL1_DOMAINS = ['.gov', '.edu', 'gov.uk', 'state.gov', 'uscis.gov', 'homeaffairs.gov.au']
+SIGNAL_LEVEL1_KEYWORDS = [
+    'policy', 'regulation', 'visa update', 'deadline', 'application open',
+    '政策', '新规', '签证', '截止日期', '开放申请', '放榜', '录取',
+]
+SIGNAL_LEVEL2_SOURCES = [
+    'pie news', 'icef', 'inside higher ed',
+    '芥末堆', 'university affairs', 'wonkhe', 'campus review',
+    'qs', 'topuniversities', 'higher ed dive',
+]
+SIGNAL_LEVEL2_KEYWORDS = [
+    'report', 'statistics', 'survey', 'white paper', 'data release',
+    '报告', '数据', '统计', '调查', '白皮书', '趋势分析',
+]
+
+# ========== 新闻源（主题 → 源，与 NEWS_TOPICS/TOPIC_KEYWORDS 同处一文件） ==========
+
+# 天行数据接口映射（不同主题对应不同接口）
+TIANAPI_ENDPOINTS = {
+    'finance': '/caijing/index',   # 财经新闻专用接口
+    'startup': '/guonei/index',    # 其余主题：国内新闻+关键词
+    'study_abroad': '/guonei/index',
+    'edu_policy': '/guonei/index',
+    'uni_rankings': '/guonei/index',
+    'market_data': '/guonei/index',
+    'industry_news': '/guonei/index',
+    'education': '/guonei/index',
+    'pbsa': '/guonei/index',
+    'uhomes': '/guonei/index',
+}
+
+# RSS 订阅源
+RSS_FEEDS = {
+    'finance': [
+        'https://www.36kr.com/feed',              # 36氪
+        'http://dedicated.wallstreetcn.com/rss.xml', # 华尔街见闻
+    ],
+    'startup': [
+        'http://www.cyzone.cn/rss/',              # 创业邦
+        'https://www.36kr.com/feed',              # 36氪
+        'https://hnrss.org/newest?q=startup',     # Hacker News Startup
+    ],
+    'study_abroad': [
+        'https://thepienews.com/feed/',              # The PIE News
+        'https://www.insidehighered.com/rss.xml',    # Inside Higher Ed
+        'https://www.highereddive.com/feeds/news/',  # Higher Ed Dive
+        'https://universitybusiness.com/feed/',      # University Business
+        'https://monitor.icef.com/feed/',            # ICEF Monitor
+        'https://wonkhe.com/feed/',                  # WonkHE (UK HE policy)
+        'https://www.jiemodui.com/rss.xml',          # 芥末堆
+    ],
+    'edu_policy': [
+        'https://thepienews.com/feed/',              # The PIE News
+        'https://www.insidehighered.com/rss.xml',    # Inside Higher Ed
+        'https://www.highereddive.com/feeds/news/',  # Higher Ed Dive
+        'https://monitor.icef.com/feed/',            # ICEF Monitor
+        'https://wonkhe.com/feed/',                  # WonkHE (UK HE policy)
+        'https://www.jiemodui.com/rss.xml',          # 芥末堆
+        'https://www.gov.uk/government/organisations/uk-visas-and-immigration.atom',  # UKVI
+        'https://www.gov.uk/government/organisations/home-office.atom',               # Home Office
+        'https://www.gov.uk/government/organisations/department-for-education.atom',  # DfE
+        'https://www.gov.uk/government/organisations/office-for-students.atom',       # OfS
+    ],
+    'uni_rankings': [
+        'https://monitor.icef.com/feed/',            # ICEF Monitor
+        'https://www.highereddive.com/feeds/news/',  # Higher Ed Dive
+        'https://wonkhe.com/feed/',                  # WonkHE (UK HE policy)
+        'https://thepienews.com/feed/',              # The PIE News
+    ],
+    'market_data': [
+        'https://monitor.icef.com/feed/',            # ICEF Monitor
+        'https://thepienews.com/feed/',              # The PIE News
+        'https://www.jiemodui.com/rss.xml',          # 芥末堆
+    ],
+    'industry_news': [
+        'https://www.jiemodui.com/rss.xml',          # 芥末堆
+        # 36氪通用 feed 已移除：泛商业科技快讯污染国际教育主题
+        'https://www.highereddive.com/feeds/news/',  # Higher Ed Dive
+    ],
+    'education': [
+        'https://www.jiemodui.com/rss.xml',          # 芥末堆
+        # 36氪通用 feed 已移除：泛商业科技快讯污染国际教育主题
+        'https://www.insidehighered.com/rss.xml',    # Inside Higher Ed
+        'https://www.highereddive.com/feeds/news/',  # Higher Ed Dive
+    ],
+    'pbsa': [
+        'https://www.36kr.com/feed',
+    ],
+    'uhomes': [
+        'https://www.36kr.com/feed',
+    ],
+}

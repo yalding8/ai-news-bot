@@ -15,12 +15,13 @@ from config import (
     ACTIVE_TOPICS_ENV,
     ACTIVE_TOPICS_DEFAULT,
     TOPIC_ALIASES,
+    TOPIC_KEYWORDS,
     SEND_WHEN_NO_NEW,
     EDUCATION_RELEVANT_KEYWORDS,
     EDUCATION_PRIORITY_KEYWORDS,
     get_logger
 )
-from news_fetcher import NewsFetcher, TOPIC_KEYWORDS
+from news_fetcher import NewsFetcher
 from ai_summarizer import AISummarizer
 from news_cache import filter_new_news, mark_news_as_sent
 from image_fetcher import fetch_article_image
