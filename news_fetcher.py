@@ -63,13 +63,15 @@ class NewsFetcher:
         self.newsapi_key = os.getenv('NEWSAPI_KEY')
         self.newsapi_base = "https://newsapi.org/v2"
         
-        # 缓存配置 (Phase 2 Task 2.3)
-        import tempfile
-        self.cache_dir = os.path.join(tempfile.gettempdir(), 'ai_news_cache')
-        if not os.path.exists(self.cache_dir):
-            os.makedirs(self.cache_dir)
-        self.cache_ttl = 3600 # 1小时缓存
-        logger.info(f"🚀 启用文件缓存，目录: {self.cache_dir}")
+        # RSS 结果文件缓存：JSON 存项目内 assets/cache/rss/（已 gitignore）。
+        # 不用 /tmp + pickle：共享主机 /tmp 可被其他本地用户预植恶意 pickle
+        # （反序列化即代码执行），且旧实现从不清理（AUDIT 2026-07-05 C4）
+        self.cache_dir = os.path.join(
+            os.path.dirname(os.path.abspath(__file__)), 'assets', 'cache', 'rss'
+        )
+        os.makedirs(self.cache_dir, exist_ok=True)
+        self.cache_ttl = 3600  # 1小时缓存
+        self._cleanup_cache()
 
         # RSS订阅源配置
         self.rss_feeds = {
@@ -621,39 +623,50 @@ class NewsFetcher:
         # 三级信号
         return 3
 
-    def _get_cache(self, key: str):
-        """读取缓存"""
-        import pickle
-        import time
+    def _cache_path(self, key: str) -> str:
         import hashlib
-        
-        file_hash = hashlib.md5(key.encode('utf-8')).hexdigest()
-        cache_path = os.path.join(self.cache_dir, file_hash)
-        
+        return os.path.join(
+            self.cache_dir, hashlib.md5(key.encode('utf-8')).hexdigest() + '.json'
+        )
+
+    def _get_cache(self, key: str):
+        """读取缓存（JSON；过期/损坏返回 None）"""
+        import json
+        import time
+
+        cache_path = self._cache_path(key)
         if os.path.exists(cache_path):
-            # 检查是否过期
             mtime = os.path.getmtime(cache_path)
             if time.time() - mtime < self.cache_ttl:
                 try:
-                    with open(cache_path, 'rb') as f:
-                        return pickle.load(f)
+                    with open(cache_path, 'r', encoding='utf-8') as f:
+                        return json.load(f)
                 except Exception:
                     pass
         return None
 
     def _set_cache(self, key: str, data: Any):
-        """写入缓存"""
-        import pickle
-        import hashlib
-        
-        file_hash = hashlib.md5(key.encode('utf-8')).hexdigest()
-        cache_path = os.path.join(self.cache_dir, file_hash)
-        
+        """写入缓存（JSON）"""
+        import json
+
         try:
-            with open(cache_path, 'wb') as f:
-                pickle.dump(data, f)
+            with open(self._cache_path(key), 'w', encoding='utf-8') as f:
+                json.dump(data, f, ensure_ascii=False)
         except Exception as e:
             logger.warning(f"写入缓存失败: {e}")
+
+    def _cleanup_cache(self, max_age_sec: int = 7 * 86400):
+        """清掉早已过期的缓存文件（旧实现只写不删，文件无限累积）"""
+        import time
+
+        cutoff = time.time() - max_age_sec
+        try:
+            for name in os.listdir(self.cache_dir):
+                path = os.path.join(self.cache_dir, name)
+                if os.path.isfile(path) and os.path.getmtime(path) < cutoff:
+                    os.remove(path)
+        except OSError as e:
+            logger.warning(f"清理缓存失败: {e}")
 
     def fetch_rss_news(self, topic_key: str, num: int = 5) -> List[Dict]:
         """

@@ -38,6 +38,10 @@ _TW = re.compile(
 
 _UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15"
 
+# 封面下载上限：og:image 是任意外站 URL，无上限的 r.content 全量读取
+# 会被异常/恶意源喂数 GB 文件（AUDIT 2026-07-05 安全节）。正常新闻封面 <2MB。
+_MAX_DOWNLOAD_BYTES = 10 * 1024 * 1024
+
 # hero banner 实际渲染为 1080×560 横图（cover）。低于此宽度会被严重放大糊掉；
 # 接近正方形的图基本是站点 logo / 头像 / 图标——典型例子：36氪对约半数无配图文章
 # 统一返回 240×240 品牌 logo (img.36krcdn.com/20191024/v2_1571894049839_img_jpg) 当 og:image。
@@ -132,7 +136,21 @@ def download_to_cache(img_url: str, timeout: float = 10.0) -> Optional[Path]:
     try:
         r = requests.get(img_url, headers={"User-Agent": _UA}, timeout=timeout, stream=True)
         r.raise_for_status()
-        cache_path.write_bytes(r.content)
+
+        content_length = r.headers.get("Content-Length")
+        if content_length and int(content_length) > _MAX_DOWNLOAD_BYTES:
+            logger.warning(f"image too large ({content_length} bytes), rejected [{img_url}]")
+            return None
+
+        # 流式累计并设硬上限：Content-Length 可缺失/说谎
+        buf = bytearray()
+        for chunk in r.iter_content(chunk_size=64 * 1024):
+            buf.extend(chunk)
+            if len(buf) > _MAX_DOWNLOAD_BYTES:
+                logger.warning(f"image exceeds {_MAX_DOWNLOAD_BYTES} bytes mid-stream, aborted [{img_url}]")
+                return None
+
+        cache_path.write_bytes(bytes(buf))
         return cache_path
     except Exception as e:
         logger.warning(f"image download failed [{img_url}]: {e}")
