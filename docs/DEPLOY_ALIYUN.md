@@ -236,10 +236,10 @@ nano .env
 
 ```env
 # DeepSeek API配置
-DEEPSEEK_API_KEY=sk-192e98a7652b4a829754a3e740f3f0c2
+DEEPSEEK_API_KEY=sk-your_deepseek_api_key_here
 
 # 企业微信机器人配置
-WECOM_WEBHOOK_URL=https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=ad335a27-91dd-4fca-b73e-e1d5b4b11f03
+WECOM_WEBHOOK_URL=https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=your_wecom_webhook_key_here
 ```
 
 保存并退出:
